@@ -23,6 +23,7 @@ type Recipe = {
   id: string;
   category: Category;
   title: string;
+  servings?: number;
   calories: number;
   macros: Macro;
   ingredients: Ingredient[];
@@ -64,8 +65,13 @@ function RecipeCard({ recipe, onPress }: { recipe: Recipe; onPress: () => void }
     <TouchableOpacity style={styles.card} activeOpacity={0.9} onPress={onPress}>
       <View style={styles.cardHeader}>
         <Text style={styles.cardTitle}>{recipe.title}</Text>
-        <View style={styles.calorieBadge}>
-          <Text style={styles.calorieText}>{recipe.calories} kcal</Text>
+        <View style={styles.badgeColumn}>
+          <View style={styles.calorieBadge}>
+            <Text style={styles.calorieText}>{recipe.calories} kcal</Text>
+          </View>
+          <View style={styles.servingsBadge}>
+            <Text style={styles.servingsBadgeText}>Servings: {recipe.servings ?? 1}</Text>
+          </View>
         </View>
       </View>
       <Text style={styles.cardSubtext}>Macros per serving</Text>
@@ -202,6 +208,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 12,
   },
+  badgeColumn: {
+    alignItems: 'flex-end',
+    gap: 6,
+  },
   cardTitle: {
     flex: 1,
     fontSize: 17,
@@ -219,6 +229,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: COLORS.primary,
+  },
+  servingsBadge: {
+    backgroundColor: '#FFF4E5',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  servingsBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#B45309',
   },
   cardSubtext: {
     fontSize: 12,

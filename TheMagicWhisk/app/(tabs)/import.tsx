@@ -31,7 +31,7 @@ export default function ImportScreen() {
 
     setIsLoading(true);
     try {
-      const response = await fetch('http://192.168.1.131:8000/api/extract', {
+      const response = await fetch('http://172.20.10.6:8000/api/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: urlInput }),
@@ -51,20 +51,23 @@ export default function ImportScreen() {
             ? remoteImage.trim()
             : undefined;
 
+        const localizedData = recipeData.languages?.en || recipeData;
+
         const completeRecipe = {
           id: Date.now().toString(),
           category: selectedCategory,
-          title: recipeData.title,
-          ingredients: recipeData.ingredients,
-          instructions: recipeData.instructions,
-          calories: recipeData.macros?.calories || 'N/A',
+          title: localizedData.title,
+          ingredients: localizedData.ingredients,
+          instructions: localizedData.instructions,
+          calories: localizedData.macros?.calories || 'N/A',
           macros: {
-            protein: recipeData.macros?.protein || 'N/A',
-            carbs: recipeData.macros?.carbs || 'N/A',
-            fats: recipeData.macros?.fat || recipeData.macros?.fats || 'N/A',
+            protein: localizedData.macros?.protein || 'N/A',
+            carbs: localizedData.macros?.carbs || 'N/A',
+            fats: localizedData.macros?.fat || localizedData.macros?.fats || 'N/A',
           },
-          servings: recipeData.servings || 1,
+          servings: localizedData.servings || 1,
           image: normalizedImage,
+          languages: recipeData.languages,
         };
 
         await addRecipe(completeRecipe);

@@ -71,7 +71,7 @@ def parse_recipe_with_ai(text: str) -> dict:
         "If the source is English, extract into 'en' first and translate to 'ro'. "
         "If the source is German or any other language, extract into 'en' first and translate to 'ro'. "
         "Identify the number of servings (default to 1 if unknown). "
-        "If macros are not explicitly stated, calculate/estimate PER-SERVING nutritional macros based on standard nutritional values for the listed ingredients."
+        "CRITICAL MACRO INSTRUCTION: First, identify the total quantity of every ingredient. Second, calculate the total combined macros (calories, protein, carbs, fat) for the ENTIRE recipe. Finally, divide those total macros by the number of servings to output the exact PER-SERVING macros. Do not skip the calculation step."
     )
 
     client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))

@@ -9,6 +9,7 @@ import { useCookbookContext } from '../../../CookbookContext';
 import { supabase } from '../../../supabase';
 
 type Macro = {
+  calories?: number | string;
   protein?: number | string;
   carbs?: number | string;
   fats?: number | string;
@@ -21,18 +22,31 @@ type Ingredient = {
   amount: string;
 };
 
+type LocalizedRecipe = {
+  title?: string;
+  servings?: number;
+  ingredients?: Ingredient[];
+  instructions?: string[];
+  macros?: Macro;
+};
+
 type Category = 'Breakfast' | 'Lunch' | 'Dinner' | 'Sweets';
 
 type Recipe = {
   id: string;
   category?: Category;
   title?: string;
+  servings?: number;
   calories?: number | string;
   macros?: Macro;
   ingredients?: Ingredient[];
   steps?: string[];
   instructions?: string[];
   image?: string;
+  languages?: {
+    en?: LocalizedRecipe;
+    ro?: LocalizedRecipe;
+  };
 };
 
 const FALLBACK_RECIPE: Recipe = {
@@ -104,18 +118,24 @@ export default function RecipeDetailsScreen() {
   const [currentCategory, setCurrentCategory] = useState<Category>(
     (recipe.category as Category) ?? 'Breakfast'
   );
+  const [lang, setLang] = useState<'en' | 'ro'>('en');
 
-  const safeTitle = recipe.title ?? 'Untitled recipe';
-  const safeCalories = recipe.calories ?? 'N/A';
-  const safeIngredients = recipe.ingredients ?? [];
-  const safeSteps = recipe.steps ?? recipe.instructions ?? [];
+  const localizedRecipe =
+    recipe.languages?.[lang] ?? recipe.languages?.en ?? recipe.languages?.ro ?? recipe;
+  const localizedMacros = localizedRecipe.macros ?? recipe.macros;
+
+  const safeTitle = localizedRecipe.title ?? recipe.title ?? 'Untitled recipe';
+  const safeCalories = localizedMacros?.calories ?? recipe.calories ?? 'N/A';
+  const safeServings = localizedRecipe.servings ?? recipe.servings ?? 1;
+  const safeIngredients = localizedRecipe.ingredients ?? recipe.ingredients ?? [];
+  const safeSteps =
+    localizedRecipe.instructions ?? recipe.instructions ?? recipe.steps ?? [];
   const fallbackImageUri = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c';
-  const proteinRaw = recipe.macros?.protein ?? 'N/A';
-  const carbsRaw = recipe.macros?.carbs ?? 'N/A';
-  const fatsRaw = recipe.macros?.fats ?? recipe.macros?.fat ?? 'N/A';
+  const proteinRaw = localizedMacros?.protein ?? 'N/A';
+  const carbsRaw = localizedMacros?.carbs ?? 'N/A';
+  const fatsRaw = localizedMacros?.fats ?? localizedMacros?.fat ?? 'N/A';
 
   const [imageUri, setImageUri] = useState<string | null>(null);
-
 
   useEffect(() => {
     if (!recipe.image) {
@@ -208,10 +228,36 @@ export default function RecipeDetailsScreen() {
           style={[styles.heroImage, { width: '100%', height: 300 }]}
         />
 
+        <View style={styles.languageToggle}>
+          <Text style={styles.languageLabel}>Language</Text>
+          <View style={styles.languageRow}>
+            {(['en', 'ro'] as const).map((code) => {
+              const isActive = code === lang;
+              return (
+                <TouchableOpacity
+                  key={code}
+                  style={[styles.languagePill, isActive && styles.languagePillActive]}
+                  activeOpacity={0.8}
+                  onPress={() => setLang(code)}
+                >
+                  <Text style={[styles.languageText, isActive && styles.languageTextActive]}>
+                    {code.toUpperCase()}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
         <View style={styles.titleRow}>
           <Text style={styles.title}>{safeTitle}</Text>
-          <View style={styles.caloriePill}>
-            <Text style={styles.calorieText}>{safeCalories} kcal</Text>
+          <View style={styles.metaPills}>
+            <View style={styles.caloriePill}>
+              <Text style={styles.calorieText}>{safeCalories} kcal</Text>
+            </View>
+            <View style={styles.servingsPill}>
+              <Text style={styles.servingsText}>Servings: {safeServings}</Text>
+            </View>
           </View>
         </View>
 
@@ -333,6 +379,44 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 20,
   },
+  metaPills: {
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    gap: 6,
+  },
+  languageToggle: {
+    marginBottom: 18,
+  },
+  languageLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.muted,
+    marginBottom: 10,
+  },
+  languageRow: {
+    flexDirection: 'row',
+  },
+  languagePill: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: '#FFFFFF',
+    marginRight: 10,
+  },
+  languagePillActive: {
+    backgroundColor: '#65B891',
+    borderColor: '#65B891',
+  },
+  languageText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.text,
+  },
+  languageTextActive: {
+    color: '#FFFFFF',
+  },
   categorySection: {
     marginBottom: 22,
   },
@@ -382,6 +466,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: '#65B891',
+  },
+  servingsPill: {
+    backgroundColor: '#FFF4E5',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  servingsText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#B45309',
   },
   section: {
     marginBottom: 24,

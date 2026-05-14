@@ -135,55 +135,14 @@ if (!newRecipe) {
 return;
 }
 
-	const languages = newRecipe.languages ?? null;
-	const primaryLanguage = languages?.en ?? languages?.ro ?? null;
-	const primaryTitle = primaryLanguage?.title ?? newRecipe.title ?? 'Untitled recipe';
-	const primaryIngredients =
-		primaryLanguage?.ingredients ?? newRecipe.ingredients ?? [];
-	const primaryInstructions =
-		primaryLanguage?.instructions ??
-		primaryLanguage?.steps ??
-		newRecipe.instructions ??
-		newRecipe.steps ?? [];
-	const primaryMacros = primaryLanguage?.macros ?? newRecipe.macros;
+setRecipes((prev) => [newRecipe, ...prev]);
 
-	const imageUrl = newRecipe.image_url ?? newRecipe.image;
-	let imagePath = newRecipe.image;
-
-	if (imageUrl && typeof imageUrl === 'string' && imageUrl.startsWith('http')) {
-		try {
-			imagePath = await uploadRecipeImage(imageUrl, newRecipe.id);
-		} catch (error) {
-			console.error('Failed to upload recipe image', error);
-		}
-	}
-
-	const recipeToInsert = {
-		title: primaryTitle,
-		ingredients: primaryIngredients,
-		instructions: primaryInstructions,
-		macros: primaryMacros,
-		image: imagePath,
-		languages: languages,
-	};
-
-	if (newRecipe.id) {
-		recipeToInsert.id = newRecipe.id;
-	}
-
-	if (newRecipe.category) {
-		recipeToInsert.category = newRecipe.category;
-	}
-
-	const { error } = await supabase.from('recipes').insert([recipeToInsert]);
+const { error } = await supabase.from('recipes').insert(newRecipe);
 
 if (error) {
 console.error('Failed to add recipe', error);
-return;
 }
-
-fetchRecipes();
-}, [fetchRecipes]);
+}, []);
 
 const updateRecipeCategory = useCallback(async (recipeId, category) => {
 const { error } = await supabase
