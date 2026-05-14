@@ -71,7 +71,8 @@ def parse_recipe_with_ai(text: str) -> dict:
         "If the source is English, extract into 'en' first and translate to 'ro'. "
         "If the source is German or any other language, extract into 'en' first and translate to 'ro'. "
         "Identify the number of servings (default to 1 if unknown). "
-        "CRITICAL MACRO INSTRUCTION: First, identify the total quantity of every ingredient. Second, calculate the total combined macros (calories, protein, carbs, fat) for the ENTIRE recipe. Finally, divide those total macros by the number of servings to output the exact PER-SERVING macros. Do not skip the calculation step."
+        "CRITICAL MACRO INSTRUCTION: First, identify the total quantity of every ingredient. Second, calculate the total combined macros (calories, protein, carbs, fat) for the ENTIRE recipe. Finally, divide those total macros by the number of servings to output the exact PER-SERVING macros. Do not skip the calculation step. "
+        "CRITICAL TRANSLATION INSTRUCTION: When generating or translating the Romanian ('ro') version of the recipe, you MUST convert all imperial measurements (oz, lbs, cups, fluid ounces, Fahrenheit) into metric equivalents (grams, kilograms, milliliters, Celsius). Round the converted numbers to practical, realistic cooking measurements (e.g., output '340g' instead of '340.19g'). The English ('en') version should retain the original units."
     )
 
     client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))

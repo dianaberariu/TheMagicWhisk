@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useRouter } from 'expo-router';
+import React, { useCallback, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
@@ -24,6 +24,12 @@ export default function ImportScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [urlInput, setUrlInput] = useState('');
 
+  useFocusEffect(
+    useCallback(() => {
+      setUrlInput('');
+    }, [])
+  );
+
   const handleExtract = async () => {
     if (isLoading) {
       return;
@@ -31,7 +37,7 @@ export default function ImportScreen() {
 
     setIsLoading(true);
     try {
-      const response = await fetch('http://172.20.10.6:8000/api/extract', {
+      const response = await fetch('http://192.168.1.131:8000/api/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: urlInput }),
@@ -71,6 +77,7 @@ export default function ImportScreen() {
         };
 
         await addRecipe(completeRecipe);
+        setUrlInput('');
         router.push({
           pathname: '/(tabs)/cookbook/recipe-details',
           params: { recipe: JSON.stringify(completeRecipe) },
@@ -149,6 +156,8 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '700',
     color: COLORS.text,
+    textAlign: 'center',
+    width: '100%',
     marginBottom: 18,
   },
   input: {

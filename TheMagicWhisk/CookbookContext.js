@@ -105,6 +105,7 @@ const uploadRecipeImage = async (imageUrl, recipeId) => {
 * @property {(recipe: Recipe) => void} addRecipe
 * @property {(recipeId: string) => void} deleteRecipe
 * @property {(recipeId: string, category: string) => void} updateRecipeCategory
+* @property {(recipe: Recipe) => void} updateRecipe
 */
 
 const CookbookContext = createContext(/** @type {CookbookContextValue | null} */ (null));
@@ -158,6 +159,25 @@ return;
 fetchRecipes();
 }, [fetchRecipes]);
 
+const updateRecipe = useCallback(async (updatedRecipe) => {
+if (!updatedRecipe) {
+return;
+}
+
+setRecipes((prev) =>
+prev.map((recipe) => (recipe.id === updatedRecipe.id ? updatedRecipe : recipe))
+);
+
+const { error } = await supabase
+.from('recipes')
+.update(updatedRecipe)
+.eq('id', updatedRecipe.id);
+
+if (error) {
+console.error('Failed to update recipe', error);
+}
+}, []);
+
 const deleteRecipe = useCallback(async (recipeId) => {
 const { error } = await supabase.from('recipes').delete().eq('id', recipeId);
 
@@ -175,8 +195,9 @@ recipes,
 addRecipe,
 deleteRecipe,
 updateRecipeCategory,
+updateRecipe,
 }),
-[recipes, addRecipe, deleteRecipe, updateRecipeCategory]
+[recipes, addRecipe, deleteRecipe, updateRecipeCategory, updateRecipe]
 );
 
 return <CookbookContext.Provider value={value}>{children}</CookbookContext.Provider>;

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -110,9 +110,10 @@ function parseRecipe(param: string | string[] | undefined): Recipe {
 export default function RecipeDetailsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ recipe?: string }>();
-  const parsedRecipe = parseRecipe(params.recipe);
+  const baselineRecipe = useMemo(() => parseRecipe(params.recipe), [params.recipe]);
+  const parsedRecipe = baselineRecipe;
   const { addToGroceryList } = useGroceryContext() as any;
-  const { recipes, updateRecipeCategory, deleteRecipe } = useCookbookContext();
+  const { recipes, updateRecipeCategory, deleteRecipe, updateRecipe } = useCookbookContext();
   const recipe =
     recipes.find((item) => item.id === parsedRecipe.id) ?? parsedRecipe;
   const [currentCategory, setCurrentCategory] = useState<Category>(
@@ -126,8 +127,11 @@ export default function RecipeDetailsScreen() {
 
   const safeTitle = localizedRecipe.title ?? recipe.title ?? 'Untitled recipe';
   const safeCalories = localizedMacros?.calories ?? recipe.calories ?? 'N/A';
-  const safeServings = localizedRecipe.servings ?? recipe.servings ?? 1;
+  const baselineServings = Math.max(1, Number(baselineRecipe.servings) || 1);
+  const [targetServings, setTargetServings] = useState<number>(baselineServings);
   const safeIngredients = localizedRecipe.ingredients ?? recipe.ingredients ?? [];
+  const baselineIngredients =
+    baselineRecipe.languages?.[lang]?.ingredients ?? baselineRecipe.ingredients ?? safeIngredients;
   const safeSteps =
     localizedRecipe.instructions ?? recipe.instructions ?? recipe.steps ?? [];
   const fallbackImageUri = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c';
@@ -136,6 +140,10 @@ export default function RecipeDetailsScreen() {
   const fatsRaw = localizedMacros?.fats ?? localizedMacros?.fat ?? 'N/A';
 
   const [imageUri, setImageUri] = useState<string | null>(null);
+
+  useEffect(() => {
+    setTargetServings(baselineServings);
+  }, [recipe.id, lang, baselineServings]);
 
   useEffect(() => {
     if (!recipe.image) {
@@ -162,6 +170,10 @@ export default function RecipeDetailsScreen() {
     return Number.isFinite(parsed) ? parsed : 0;
   };
 
+  const normalizedTargetServings = Number.isFinite(targetServings)
+    ? targetServings
+    : baselineServings;
+
   const macros = [
     {
       label: 'Protein',
@@ -185,6 +197,97 @@ export default function RecipeDetailsScreen() {
       color: '#F29CB1',
     },
   ];
+
+  const scaleAmount = (amount?: string) => {
+    if (!amount) {
+      return 'N/A';
+    }
+
+    const baseServings = Number(baselineRecipe.servings) || 1;
+    const safeTargetServings = Number.isFinite(targetServings)
+      ? targetServings
+      : baselineServings;
+    const ratio = safeTargetServings / baseServings;
+
+    if (!Number.isFinite(ratio) || ratio === 1) {
+      return amount;
+    }
+
+    const parseQuantity = (value: string) => {
+      const trimmed = value.trim();
+
+      if (trimmed.includes(' ')) {
+        const [wholePart, fractionPart] = trimmed.split(' ');
+        const whole = parseFloat(wholePart);
+        const [numerator, denominator] = fractionPart.split('/').map(Number);
+
+        if (Number.isFinite(whole) && Number.isFinite(numerator) && Number.isFinite(denominator)) {
+          return whole + numerator / denominator;
+        }
+      }
+
+      if (trimmed.includes('/')) {
+        const [numerator, denominator] = trimmed.split('/').map(Number);
+        if (Number.isFinite(numerator) && Number.isFinite(denominator)) {
+          return numerator / denominator;
+        }
+      }
+
+      const parsed = parseFloat(trimmed);
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+
+    const formatQuantity = (value: number) => {
+      const rounded = Math.round(value * 100) / 100;
+      const whole = Math.floor(rounded);
+      const fraction = rounded - whole;
+      const denominators = [2, 3, 4, 8];
+
+      for (const denominator of denominators) {
+        const numerator = Math.round(fraction * denominator);
+        const match = numerator / denominator;
+
+        if (numerator > 0 && numerator < denominator && Math.abs(fraction - match) < 0.02) {
+          return whole > 0 ? `${whole} ${numerator}/${denominator}` : `${numerator}/${denominator}`;
+        }
+      }
+
+      return rounded
+        .toFixed(2)
+        .replace(/\.00$/, '')
+        .replace(/(\.\d*[1-9])0+$/, '$1');
+    };
+
+    const match = amount.trim().match(/^(\d+\s+\d+\/\d+|\d+\/\d+|\d+(?:\.\d+)?)/);
+
+    if (!match) {
+      return amount;
+    }
+
+    const scaledValue = parseQuantity(match[0]) * ratio;
+
+    if (!Number.isFinite(scaledValue) || scaledValue <= 0) {
+      return amount;
+    }
+
+    return amount.replace(match[0], formatQuantity(scaledValue));
+  };
+
+  const scaledIngredients = baselineIngredients.map((ingredient) => ({
+    ...ingredient,
+    amount: scaleAmount(ingredient.amount),
+  }));
+
+  useEffect(() => {
+    const updatedRecipe = {
+      ...baselineRecipe,
+      title: safeTitle,
+      servings: normalizedTargetServings,
+      ingredients: scaledIngredients,
+    };
+
+    updateRecipe(updatedRecipe);
+  }, [normalizedTargetServings, baselineRecipe, scaledIngredients, updateRecipe]);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -228,38 +331,78 @@ export default function RecipeDetailsScreen() {
           style={[styles.heroImage, { width: '100%', height: 300 }]}
         />
 
-        <View style={styles.languageToggle}>
-          <Text style={styles.languageLabel}>Language</Text>
-          <View style={styles.languageRow}>
-            {(['en', 'ro'] as const).map((code) => {
-              const isActive = code === lang;
-              return (
+        <View style={styles.statsRow}>
+          <View style={styles.statsLeftColumn}>
+            <View style={[styles.languageToggle, { marginBottom: 0 }]}>
+              <View style={styles.languageRow}>
+                {(['en', 'ro'] as const).map((code) => {
+                  const isActive = code === lang;
+                  return (
+                    <TouchableOpacity
+                      key={code}
+                      style={[styles.languagePill, isActive && styles.languagePillActive]}
+                      activeOpacity={0.8}
+                      onPress={() => setLang(code)}
+                    >
+                      <Text style={[styles.languageText, isActive && styles.languageTextActive]}>
+                        {code.toUpperCase()}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+            <View style={styles.caloriePill}>
+              <Text style={styles.calorieText}>{safeCalories} kcal / serving</Text>
+            </View>
+          </View>
+          <View style={styles.statsMetaColumn}>
+            <View style={styles.servingsCounter}>
+              <Text style={styles.servingsLabel}>Servings</Text>
+              <View style={styles.servingsControls}>
                 <TouchableOpacity
-                  key={code}
-                  style={[styles.languagePill, isActive && styles.languagePillActive]}
-                  activeOpacity={0.8}
-                  onPress={() => setLang(code)}
+                  style={[
+                    styles.servingsControl,
+                    normalizedTargetServings <= 1 && styles.servingsControlDisabled,
+                  ]}
+                  activeOpacity={0.7}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  onPress={() =>
+                    setTargetServings((prev) => {
+                      const current = Number.isFinite(prev) ? prev : baselineServings;
+                      return Math.max(1, current - 1);
+                    })
+                  }
+                  disabled={normalizedTargetServings <= 1}
                 >
-                  <Text style={[styles.languageText, isActive && styles.languageTextActive]}>
-                    {code.toUpperCase()}
-                  </Text>
+                  <Ionicons
+                    name="remove"
+                    size={16}
+                    color={normalizedTargetServings <= 1 ? COLORS.muted : '#65B891'}
+                  />
                 </TouchableOpacity>
-              );
-            })}
+                <Text style={styles.servingsValue}>{normalizedTargetServings}</Text>
+                <TouchableOpacity
+                  style={styles.servingsControl}
+                  activeOpacity={0.7}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  onPress={() =>
+                    setTargetServings((prev) => {
+                      const current = Number.isFinite(prev) ? prev : baselineServings;
+                      return current + 1;
+                    })
+                  }
+                >
+                  <Ionicons name="add" size={16} color="#65B891" />
+                </TouchableOpacity>
+              </View>
+            </View>
           </View>
         </View>
 
-        <View style={styles.titleRow}>
-          <Text style={styles.title}>{safeTitle}</Text>
-          <View style={styles.metaPills}>
-            <View style={styles.caloriePill}>
-              <Text style={styles.calorieText}>{safeCalories} kcal</Text>
-            </View>
-            <View style={styles.servingsPill}>
-              <Text style={styles.servingsText}>Servings: {safeServings}</Text>
-            </View>
-          </View>
-        </View>
+        <Text style={[styles.title, { textAlign: 'center', width: '100%', marginBottom: 20 }]}>
+          {safeTitle}
+        </Text>
 
         <View style={styles.categorySection}>
           <Text style={styles.categoryLabel}>Category</Text>
@@ -313,7 +456,7 @@ export default function RecipeDetailsScreen() {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Ingredients</Text>
-          {safeIngredients.map((ingredient, index) => (
+          {scaledIngredients.map((ingredient, index) => (
             <View key={index} style={styles.ingredientRow}>
               <Text style={styles.ingredientName}>{ingredient.name ?? 'Unknown ingredient'}</Text>
               <Text style={styles.ingredientAmount}>{ingredient.amount ?? 'N/A'}</Text>
@@ -338,7 +481,7 @@ export default function RecipeDetailsScreen() {
           style={styles.primaryButton}
           activeOpacity={0.9}
           onPress={() => {
-            addToGroceryList(safeIngredients);
+            addToGroceryList(scaledIngredients);
             Alert.alert('Added', 'Ingredients added to your grocery list!');
           }}
         >
@@ -372,17 +515,20 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     elevation: 3,
   },
-  titleRow: {
+  statsRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-    marginBottom: 20,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    gap: 20,
+    marginBottom: 12,
   },
-  metaPills: {
-    flexDirection: 'column',
-    alignItems: 'flex-end',
-    gap: 6,
+  statsLeftColumn: {
+    alignItems: 'center',
+    gap: 10,
+  },
+  statsMetaColumn: {
+    alignItems: 'center',
+    gap: 10,
   },
   languageToggle: {
     marginBottom: 18,
@@ -452,6 +598,8 @@ const styles = StyleSheet.create({
   },
   title: {
     flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
     fontSize: 22,
     fontWeight: '700',
     color: COLORS.text,
@@ -467,16 +615,44 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#65B891',
   },
-  servingsPill: {
-    backgroundColor: '#FFF4E5',
+  servingsCounter: {
+    backgroundColor: '#E8F5EE',
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
+    paddingVertical: 8,
+    borderRadius: 16,
+    alignItems: 'center',
+    zIndex: 1,
   },
-  servingsText: {
-    fontSize: 12,
+  servingsLabel: {
+    fontSize: 11,
     fontWeight: '700',
-    color: '#B45309',
+    color: '#65B891',
+    marginBottom: 6,
+  },
+  servingsControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  servingsControl: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F5FBF8',
+    borderWidth: 1,
+    borderColor: '#8FD3B2',
+  },
+  servingsControlDisabled: {
+    opacity: 0.5,
+  },
+  servingsValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#65B891',
+    minWidth: 20,
+    textAlign: 'center',
   },
   section: {
     marginBottom: 24,
