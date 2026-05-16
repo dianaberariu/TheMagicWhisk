@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { useCookbookContext } from '../../CookbookContext';
 
@@ -37,7 +37,7 @@ export default function ImportScreen() {
 
     setIsLoading(true);
     try {
-      const response = await fetch('http://192.168.1.131:8000/api/extract', {
+      const response = await fetch('http://172.20.10.6:8000/api/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: urlInput }),
@@ -45,6 +45,7 @@ export default function ImportScreen() {
       const data = await response.json();
 
       if (data?.status === 'error') {
+        Alert.alert('Import Failed', data.message || 'An unknown error occurred.');
         return;
       }
 
@@ -84,6 +85,10 @@ export default function ImportScreen() {
         });
       }
     } catch (error) {
+      Alert.alert(
+        'Network Error',
+        'Could not connect to the backend. Check your IP address and ensure the server is running.'
+      );
       console.error('Backend connection failed:', error);
     } finally {
       setIsLoading(false);
