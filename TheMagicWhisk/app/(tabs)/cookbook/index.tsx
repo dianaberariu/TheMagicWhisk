@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import ScreenBackground from '../../../components/ScreenBackground';
 import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { useCookbookContext } from '../../../CookbookContext';
@@ -202,7 +202,7 @@ export default function CookbookList() {
   }, [activeCategory, recipes, searchQuery]);
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <ScreenBackground>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <Text style={styles.title}>Your Cookbook</Text>
         <View style={styles.searchBar}>
@@ -255,7 +255,7 @@ export default function CookbookList() {
           ))}
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </ScreenBackground>
   );
 }
 

@@ -1,22 +1,24 @@
 import React, { useMemo } from 'react';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import ScreenBackground from '../../components/ScreenBackground';
 import { Ionicons } from '@expo/vector-icons';
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { useGroceryContext } from '../../GroceryContext';
 
 type GroceryItem = {
 	id: string;
 	name: string;
-	amount?: string;
-	isChecked: boolean;
+	is_completed: boolean;
+	user_id: string;
 };
 
 type GroceryContextValue = {
 	groceryList: GroceryItem[];
-	toggleGroceryItem: (id: string) => void;
-	removeGroceryItem: (id: string) => void;
-	clearGroceryList: () => void;
+	isLoading: boolean;
+	isMutating: boolean;
+	toggleGroceryItem: (id: string) => Promise<void>;
+	removeGroceryItem: (id: string) => Promise<void>;
+	clearGroceryList: () => Promise<void>;
 };
 
 const COLORS = {
@@ -29,15 +31,33 @@ const COLORS = {
 };
 
 export default function GroceryScreen() {
-	const { groceryList, toggleGroceryItem, removeGroceryItem, clearGroceryList } =
+	const {
+		groceryList,
+		isLoading,
+		isMutating,
+		toggleGroceryItem,
+		removeGroceryItem,
+		clearGroceryList,
+	} =
 		useGroceryContext() as GroceryContextValue;
 	const checkedCount = useMemo(
-		() => groceryList.filter((item) => item.isChecked).length,
+		() => groceryList.filter((item) => item.is_completed).length,
 		[groceryList]
 	);
 
+	if (isLoading && groceryList.length === 0) {
+		return (
+			<ScreenBackground>
+				<View style={styles.loadingState}>
+					<ActivityIndicator size="large" color={COLORS.accent} />
+					<Text style={styles.loadingText}>Syncing your groceries...</Text>
+				</View>
+			</ScreenBackground>
+		);
+	}
+
 	return (
-		<SafeAreaView style={styles.safeArea} edges={['top']}>
+		<ScreenBackground>
 			<View style={styles.container}>
 				<View style={styles.headerRow}>
 					<Text style={styles.title}>Grocery List</Text>
@@ -45,6 +65,7 @@ export default function GroceryScreen() {
 						<TouchableOpacity
 							style={styles.clearButton}
 							activeOpacity={0.7}
+							disabled={isMutating}
 							onPress={() =>
 								Alert.alert(
 									'Clear List',
@@ -63,10 +84,16 @@ export default function GroceryScreen() {
 				<Text style={styles.subtitle}>
 					{checkedCount}/{groceryList.length} items checked
 				</Text>
+				{isLoading && groceryList.length > 0 && (
+					<View style={styles.syncRow}>
+						<ActivityIndicator size="small" color={COLORS.accent} />
+						<Text style={styles.syncText}>Updating your list...</Text>
+					</View>
+				)}
 				<ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.list}>
 					{groceryList.length === 0 ? (
 						<Text style={styles.emptyState}>
-							Your grocery list is empty. Add a recipe from your cookbook!
+							Your grocery list is empty. Add ingredients from a recipe to save them here.
 						</Text>
 					) : (
 						groceryList.map((item) => (
@@ -74,28 +101,32 @@ export default function GroceryScreen() {
 								key={item.id}
 								style={styles.row}
 								activeOpacity={0.8}
+								disabled={isMutating}
 								onPress={() => toggleGroceryItem(item.id)}
 							>
 								<Ionicons
-									name={item.isChecked ? 'checkmark-circle' : 'ellipse-outline'}
+									name={item.is_completed ? 'checkmark-circle' : 'ellipse-outline'}
 									size={22}
-									color={item.isChecked ? COLORS.accent : COLORS.muted}
+									color={item.is_completed ? COLORS.accent : COLORS.muted}
 									style={styles.checkboxIcon}
 								/>
 								<View style={styles.itemTextWrap}>
 									<Text
 										style={[
 											styles.itemText,
-											item.isChecked && styles.itemTextChecked,
+											item.is_completed && styles.itemTextChecked,
 										]}
 									>
 										{item.name}
 									</Text>
-									<Text style={styles.itemAmount}>{item.amount}</Text>
+									<Text style={styles.itemAmount}>
+										{item.is_completed ? 'Completed' : 'Tap to mark complete'}
+									</Text>
 								</View>
 								<TouchableOpacity
 									style={styles.deleteButton}
 									activeOpacity={0.7}
+									disabled={isMutating}
 									onPress={(event) => {
 										event.stopPropagation();
 										removeGroceryItem(item.id);
@@ -106,9 +137,9 @@ export default function GroceryScreen() {
 							</TouchableOpacity>
 						))
 					)}
-				</ScrollView>
-			</View>
-		</SafeAreaView>
+						</ScrollView>
+					</View>
+				</ScreenBackground>
 	);
 }
 
@@ -149,6 +180,16 @@ const styles = StyleSheet.create({
 	list: {
 		paddingBottom: 16,
 	},
+	syncRow: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 8,
+		marginBottom: 14,
+	},
+	syncText: {
+		fontSize: 12,
+		color: COLORS.muted,
+	},
 	row: {
 		flexDirection: 'row',
 		alignItems: 'center',
@@ -184,5 +225,16 @@ const styles = StyleSheet.create({
 		color: COLORS.muted,
 		lineHeight: 20,
 		paddingVertical: 20,
+	},
+	loadingState: {
+		flex: 1,
+		alignItems: 'center',
+		justifyContent: 'center',
+		padding: 20,
+	},
+	loadingText: {
+		marginTop: 12,
+		fontSize: 14,
+		color: COLORS.muted,
 	},
 });

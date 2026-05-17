@@ -7,6 +7,7 @@ useMemo,
 useState,
 } from 'react';
 import { supabase } from './supabase';
+import { useAuth } from './AuthContext';
 
 const SUPABASE_IMAGE_BUCKET =
 	process.env.EXPO_PUBLIC_SUPABASE_IMAGE_BUCKET ?? 'recipe-images';
@@ -112,38 +113,52 @@ const CookbookContext = createContext(/** @type {CookbookContextValue | null} */
 
 export function CookbookProvider({ children }) {
 const [recipes, setRecipes] = useState([]);
+const [loading, setLoading] = useState(true);
+const { user } = useAuth();
 
 const fetchRecipes = useCallback(async () => {
+if (!user?.id) {
+setRecipes([]);
+setLoading(false);
+return;
+}
+
+setLoading(true);
 const { data, error } = await supabase
 .from('recipes')
 .select('*')
+.eq('user_id', user.id)
 .order('created_at', { ascending: false });
 console.log("Supabase URL being used:", supabase.supabaseUrl);
 if (error) {
 console.error('Failed to fetch recipes', error);
+setLoading(false);
 return;
 }
 
 setRecipes(data ?? []);
-}, []);
+setLoading(false);
+}, [user]);
 
 useEffect(() => {
 fetchRecipes();
-}, [fetchRecipes]);
+}, [fetchRecipes, user?.id]);
 
 const addRecipe = useCallback(async (newRecipe) => {
 if (!newRecipe) {
 return;
 }
 
-setRecipes((prev) => [newRecipe, ...prev]);
+const recipeWithOwner = user?.id ? { ...newRecipe, user_id: user.id } : newRecipe;
 
-const { error } = await supabase.from('recipes').insert(newRecipe);
+setRecipes((prev) => [recipeWithOwner, ...prev]);
+
+const { error } = await supabase.from('recipes').insert(recipeWithOwner);
 
 if (error) {
 console.error('Failed to add recipe', error);
 }
-}, []);
+}, [user]);
 
 const updateRecipeCategory = useCallback(async (recipeId, category) => {
 const { error } = await supabase
@@ -192,12 +207,13 @@ fetchRecipes();
 const value = useMemo(
 () => ({
 recipes,
+loading,
 addRecipe,
 deleteRecipe,
 updateRecipeCategory,
 updateRecipe,
 }),
-[recipes, addRecipe, deleteRecipe, updateRecipeCategory, updateRecipe]
+[recipes, loading, addRecipe, deleteRecipe, updateRecipeCategory, updateRecipe]
 );
 
 return <CookbookContext.Provider value={value}>{children}</CookbookContext.Provider>;

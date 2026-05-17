@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import ScreenBackground from '../../components/ScreenBackground';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { useCookbookContext } from '../../CookbookContext';
@@ -37,7 +37,7 @@ export default function ImportScreen() {
 
     setIsLoading(true);
     try {
-      const response = await fetch('http://172.20.10.6:8000/api/extract', {
+      const response = await fetch('http://192.168.100.149:8000/api/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: urlInput }),
@@ -96,7 +96,7 @@ export default function ImportScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <ScreenBackground>
       <View style={styles.container}>
         <Text style={styles.title}>Import Recipe</Text>
         <TextInput
@@ -144,7 +144,7 @@ export default function ImportScreen() {
           </View>
         </Pressable>
       </View>
-    </SafeAreaView>
+    </ScreenBackground>
   );
 }
 

@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import ScreenBackground from '../../components/ScreenBackground';
 import { Image, ImageBackground, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { useCookbookContext } from '../../CookbookContext';
 import { useGroceryContext } from '../../GroceryContext';
+import { useAuth } from '../../AuthContext';
 
 type Recipe = {
   id: string;
@@ -32,6 +33,7 @@ const COLORS = {
   muted: '#6B7280',
   border: '#E5E7EB',
   accent: '#6FCF97',
+  accentDark: '#4F9B78',
 };
 
 const CATEGORY_LINKS = [
@@ -59,8 +61,10 @@ export default function HomeScreen() {
   const [featuredRecipe, setFeaturedRecipe] = useState<any>(null);
   const { recipes } = useCookbookContext();
   const { groceryList } = useGroceryContext() as GroceryContextValue;
+  const { signOut, user } = useAuth();
   const recentRecipes = (recipes as Recipe[]).slice(0, 4);
   const itemCount = groceryList.length;
+  const displayName = user?.user_metadata?.full_name || 'Chef';
 
   useEffect(() => {
     const recipeList = recipes as Recipe[];
@@ -73,19 +77,34 @@ export default function HomeScreen() {
     setFeaturedRecipe(recipeList[randomIndex]);
   }, [recipes]);
 
+  const handleSignOut = async () => {
+    try {
+      const { error } = await signOut();
+      if (error) {
+        console.error('Failed to sign out', error);
+      }
+    } catch (error) {
+      console.error('Failed to sign out', error);
+    }
+  };
+
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <ScreenBackground>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.contentInset}>
-          <View style={styles.headerRow}>
-            <View>
-              <Text style={styles.greeting}>Hello, Diana!</Text>
-              <Text style={styles.greetingSubtitle}>What are we cooking today?</Text>
+            <View style={styles.headerRow}>
+              <View style={styles.greetingWrap}>
+                <Text style={styles.greeting}>Hello, {displayName}!</Text>
+                <Text style={styles.greetingSubtitle}>What are we cooking today?</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.iconShell}
+                activeOpacity={0.85}
+                onPress={() => router.push('/settings' as never)}
+              >
+                <Ionicons name="person-circle-outline" size={34} color={COLORS.accentDark} />
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity style={styles.iconButton}>
-              <Ionicons name="notifications-outline" size={22} color={COLORS.text} />
-            </TouchableOpacity>
-          </View>
 
           <View style={styles.searchBar}>
             <Ionicons name="search" size={18} color={COLORS.muted} />
@@ -111,92 +130,53 @@ export default function HomeScreen() {
             />
           </View>
 
-          <View style={styles.categoryGrid}>
-            {CATEGORY_LINKS.map((category) => (
-              <TouchableOpacity
-                key={category.name}
-                activeOpacity={0.8}
-                onPress={() =>
-                  router.navigate({
-                    pathname: '/(tabs)/cookbook',
-                    params: { category: category.name },
-                  })
-                }
-                style={styles.categoryCard}
-              >
-                <ImageBackground
-                  source={{ uri: category.image }}
-                  style={styles.categoryCardImage}
+          {recipes && recipes.length > 0 ? (
+            <View style={styles.categoryGrid}>
+              {CATEGORY_LINKS.map((category) => (
+                <TouchableOpacity
+                  key={category.name}
+                  activeOpacity={0.8}
+                  onPress={() =>
+                    router.navigate({
+                      pathname: '/(tabs)/cookbook',
+                      params: { category: category.name },
+                    })
+                  }
+                  style={styles.categoryCard}
                 >
-                  <View style={styles.categoryCardOverlay} />
-                  <Text style={styles.categoryCardLabel}>{category.name}</Text>
-                </ImageBackground>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {!recipes || recipes.length === 0 ? (
-            <View style={{ marginBottom: 24 }}>
-              <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#111827', marginBottom: 12 }}>
-                Get Started 🚀
-              </Text>
-              <View
-                style={{
-                  backgroundColor: '#EAF6F0',
-                  borderRadius: 20,
-                  padding: 24,
-                  alignItems: 'center',
-                  borderWidth: 1,
-                  borderColor: '#D1EAE0',
-                }}
-              >
-                <Ionicons
-                  name="restaurant-outline"
-                  size={48}
-                  color="#65B891"
-                  style={{ marginBottom: 16 }}
-                />
-                <Text
-                  style={{
-                    fontSize: 20,
-                    fontWeight: 'bold',
-                    color: '#111827',
-                    marginBottom: 8,
-                    textAlign: 'center',
-                  }}
-                >
-                  Your Cookbook is Empty
-                </Text>
-                <Text
-                  style={{
-                    fontSize: 14,
-                    color: '#6B7280',
-                    textAlign: 'center',
-                    marginBottom: 20,
-                  }}
-                >
-                  Import your first recipe from TikTok, YouTube, or a website to start cooking!
+                  <ImageBackground
+                    source={{ uri: category.image }}
+                    style={styles.categoryCardImage}
+                  >
+                    <View style={styles.categoryCardOverlay} />
+                    <Text style={styles.categoryCardLabel}>{category.name}</Text>
+                  </ImageBackground>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : (
+            <View style={styles.emptyStateWrap}>
+              <View style={styles.emptyStateCard}>
+                <View style={styles.emptyStateIconShell}>
+                  <Ionicons name="restaurant-outline" size={28} color={COLORS.accent} />
+                </View>
+                <Text style={styles.emptyStateTitle}>Your cookbook is waiting</Text>
+                <Text style={styles.emptyStateSubtitle}>
+                  Head over to the Import tab to add your first recipe and start your culinary magic.
                 </Text>
                 <TouchableOpacity
                   onPress={() => router.navigate('/(tabs)/import')}
-                  style={{
-                    backgroundColor: '#65B891',
-                    paddingVertical: 12,
-                    paddingHorizontal: 24,
-                    borderRadius: 999,
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 8,
-                  }}
+                  activeOpacity={0.85}
+                  style={styles.emptyStateButton}
                 >
-                  <Ionicons name="add-circle-outline" size={20} color="#FFFFFF" />
-                  <Text style={{ color: '#FFFFFF', fontWeight: 'bold', fontSize: 16 }}>
-                    Import a Recipe
-                  </Text>
+                  <Ionicons name="add-circle-outline" size={18} color="#FFFFFF" />
+                  <Text style={styles.emptyStateButtonText}>Import a Recipe</Text>
                 </TouchableOpacity>
               </View>
             </View>
-          ) : (
+          )}
+
+          {recipes && recipes.length > 0 && (
             featuredRecipe && (
               <View style={{ marginBottom: 24 }}>
                 <Text
@@ -280,39 +260,41 @@ export default function HomeScreen() {
             </View>
           </TouchableOpacity>
 
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Recent Recipes</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.recentList}
-            >
-              {recentRecipes.map((recipe) => (
-                <TouchableOpacity
-                  key={recipe.id}
-                  style={styles.recentCard}
-                  activeOpacity={0.9}
-                  onPress={() =>
-                    router.push({
-                      pathname: '/(tabs)/cookbook/recipe-details',
-                      params: { recipe: JSON.stringify(recipe) },
-                    })
-                  }
-                >
-                  <Image
-                    source={{ uri: recipe.image }}
-                    resizeMode="cover"
-                    style={styles.recentImage}
-                  />
-                  <Text style={styles.recentTitle}>{recipe.title}</Text>
-                  <Text style={styles.recentCalories}>{recipe.calories} kcal</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
+          {recipes && recipes.length > 0 && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Recent Recipes</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.recentList}
+              >
+                {recentRecipes.map((recipe) => (
+                  <TouchableOpacity
+                    key={recipe.id}
+                    style={styles.recentCard}
+                    activeOpacity={0.9}
+                    onPress={() =>
+                      router.push({
+                        pathname: '/(tabs)/cookbook/recipe-details',
+                        params: { recipe: JSON.stringify(recipe) },
+                      })
+                    }
+                  >
+                    <Image
+                      source={{ uri: recipe.image }}
+                      resizeMode="cover"
+                      style={styles.recentImage}
+                    />
+                    <Text style={styles.recentTitle}>{recipe.title}</Text>
+                    <Text style={styles.recentCalories}>{recipe.calories} kcal</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          )}
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </ScreenBackground>
   );
 }
 
@@ -357,6 +339,44 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 2,
   },
+  iconShell: {
+    width: 68,
+    height: 68,
+    borderRadius: 22,
+    backgroundColor: '#E4F4EC',
+    borderWidth: 1,
+    borderColor: '#D5EBDD',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 0,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+  },
+  greetingWrap: {
+    flex: 1,
+  },
+  logoutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.accent,
+    shadowColor: '#000000',
+    shadowOpacity: 0.08,
+    shadowOffset: { width: 0, height: 6 },
+    shadowRadius: 12,
+    elevation: 2,
+  },
+  logoutButtonText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -385,6 +405,62 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
     marginBottom: 12,
+  },
+  emptyStateWrap: {
+    marginBottom: 18,
+  },
+  emptyStateCard: {
+    backgroundColor: '#F2FAF6',
+    borderRadius: 24,
+    paddingVertical: 28,
+    paddingHorizontal: 22,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#D6EBDD',
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.06,
+    shadowOffset: { width: 0, height: 10 },
+    shadowRadius: 18,
+    elevation: 3,
+  },
+  emptyStateIconShell: {
+    width: 60,
+    height: 60,
+    borderRadius: 18,
+    backgroundColor: '#E3F3EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  emptyStateTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#1F2937',
+    textAlign: 'center',
+    marginBottom: 10,
+    letterSpacing: -0.2,
+  },
+  emptyStateSubtitle: {
+    fontSize: 14,
+    lineHeight: 21,
+    color: '#55606B',
+    textAlign: 'center',
+    marginBottom: 20,
+    maxWidth: 320,
+  },
+  emptyStateButton: {
+    backgroundColor: COLORS.accent,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 999,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  emptyStateButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 15,
   },
   categoryCard: {
     width: '47%',
