@@ -6,6 +6,7 @@ import { Alert, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } fr
 
 import { useGroceryContext } from '../../../GroceryContext';
 import { useCookbookContext } from '../../../CookbookContext';
+import { useThemeContext } from '../../../context/ThemeContext';
 import { supabase } from '../../../supabase';
 
 type Macro = {
@@ -47,6 +48,10 @@ type Recipe = {
     en?: LocalizedRecipe;
     ro?: LocalizedRecipe;
   };
+};
+
+type GroceryContextValue = {
+  addToGroceryList: (ingredients: Ingredient[]) => Promise<void> | void;
 };
 
 const FALLBACK_RECIPE: Recipe = {
@@ -109,10 +114,11 @@ function parseRecipe(param: string | string[] | undefined): Recipe {
 
 export default function RecipeDetailsScreen() {
   const router = useRouter();
+  const { isDarkMode } = useThemeContext();
   const params = useLocalSearchParams<{ recipe?: string }>();
   const baselineRecipe = useMemo(() => parseRecipe(params.recipe), [params.recipe]);
   const parsedRecipe = baselineRecipe;
-  const { addToGroceryList } = useGroceryContext() as any;
+  const { addToGroceryList } = useGroceryContext() as GroceryContextValue;
   const { recipes, updateRecipeCategory, deleteRecipe, updateRecipe } = useCookbookContext();
   const recipe =
     recipes.find((item) => item.id === parsedRecipe.id) ?? parsedRecipe;
@@ -138,6 +144,27 @@ export default function RecipeDetailsScreen() {
   const proteinRaw = localizedMacros?.protein ?? 'N/A';
   const carbsRaw = localizedMacros?.carbs ?? 'N/A';
   const fatsRaw = localizedMacros?.fats ?? localizedMacros?.fat ?? 'N/A';
+  const palette = isDarkMode
+    ? {
+        background: '#121212',
+        surface: '#1E1E1E',
+        surfaceSoft: '#232323',
+        text: '#FFFFFF',
+        muted: '#C7C7C7',
+        border: '#2C3230',
+        track: '#2A2A2A',
+        pillBorder: '#2E3533',
+      }
+    : {
+        background: '#FFFFFF',
+        surface: '#FFFFFF',
+        surfaceSoft: '#F6FBF8',
+        text: '#111827',
+        muted: '#6B7280',
+        border: '#E5E7EB',
+        track: '#E5E7EB',
+        pillBorder: '#E5E7EB',
+      };
 
   const [imageUri, setImageUri] = useState<string | null>(null);
 
@@ -290,21 +317,43 @@ export default function RecipeDetailsScreen() {
   }, [normalizedTargetServings, baselineRecipe, scaledIngredients, updateRecipe]);
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: palette.background }]} edges={['top']}>
       <Stack.Screen
         options={{
+          animation: 'fade',
           title: safeTitle,
+          headerStyle: {
+            backgroundColor: palette.background,
+          },
+          headerShadowVisible: false,
+          headerTintColor: palette.text,
+          headerTitleStyle: {
+            color: palette.text,
+            fontWeight: '700',
+          },
           headerLeft: () => (
             <TouchableOpacity
-              style={styles.headerIconButton}
-              onPress={() => router.navigate('/cookbook')}
+              style={[
+                styles.headerIconButton,
+                {
+                  backgroundColor: isDarkMode ? '#232323' : '#F3F4F6',
+                  borderColor: palette.border,
+                },
+              ]}
+              onPress={() => router.back()}
             >
-              <Ionicons name="chevron-back" size={24} color={COLORS.text} />
+              <Ionicons name="chevron-back" size={24} color={palette.text} />
             </TouchableOpacity>
           ),
           headerRight: () => (
             <TouchableOpacity
-              style={styles.headerIconButton}
+              style={[
+                styles.headerIconButton,
+                {
+                  backgroundColor: isDarkMode ? '#232323' : '#F3F4F6',
+                  borderColor: palette.border,
+                },
+              ]}
               onPress={() =>
                 Alert.alert('Delete Recipe?', undefined, [
                   { text: 'Cancel', style: 'cancel' },
@@ -328,7 +377,10 @@ export default function RecipeDetailsScreen() {
         <Image
           source={{ uri: imageUri ?? fallbackImageUri }}
           resizeMode="cover"
-          style={[styles.heroImage, { width: '100%', height: 300 }]}
+          style={[
+            styles.heroImage,
+            { width: '100%', height: 300, borderColor: palette.border },
+          ]}
         />
 
         <View style={styles.statsRow}>
@@ -340,11 +392,17 @@ export default function RecipeDetailsScreen() {
                   return (
                     <TouchableOpacity
                       key={code}
-                      style={[styles.languagePill, isActive && styles.languagePillActive]}
+                      style={[
+                        styles.languagePill,
+                        {
+                          backgroundColor: isActive ? '#65B891' : palette.surface,
+                          borderColor: isActive ? '#65B891' : palette.pillBorder,
+                        },
+                      ]}
                       activeOpacity={0.8}
                       onPress={() => setLang(code)}
                     >
-                      <Text style={[styles.languageText, isActive && styles.languageTextActive]}>
+                      <Text style={[styles.languageText, { color: isActive ? '#FFFFFF' : palette.text }]}>
                         {code.toUpperCase()}
                       </Text>
                     </TouchableOpacity>
@@ -352,18 +410,22 @@ export default function RecipeDetailsScreen() {
                 })}
               </View>
             </View>
-            <View style={styles.caloriePill}>
-              <Text style={styles.calorieText}>{safeCalories} kcal / serving</Text>
+            <View style={[styles.caloriePill, { backgroundColor: isDarkMode ? '#1A1A1A' : '#EAF6F0', borderColor: isDarkMode ? '#404040' : 'transparent', borderWidth: isDarkMode ? 1 : 0 }]}>
+              <Text style={[styles.calorieText, { color: isDarkMode ? '#FFFFFF' : '#65B891', fontWeight: '800', opacity: isDarkMode ? 1 : 1 }]}>{safeCalories} kcal / serving</Text>
             </View>
           </View>
           <View style={styles.statsMetaColumn}>
-            <View style={styles.servingsCounter}>
-              <Text style={styles.servingsLabel}>Servings</Text>
+            <View style={[styles.servingsCounter, { backgroundColor: isDarkMode ? '#1A1A1A' : '#E8F5EE', borderColor: isDarkMode ? '#404040' : 'transparent', borderWidth: isDarkMode ? 1 : 0 }]}>
+              <Text style={[styles.servingsLabel, { color: isDarkMode ? '#FFFFFF' : '#65B891', fontWeight: '800', opacity: isDarkMode ? 1 : 1 }]}>Servings</Text>
               <View style={styles.servingsControls}>
                 <TouchableOpacity
                   style={[
                     styles.servingsControl,
                     normalizedTargetServings <= 1 && styles.servingsControlDisabled,
+                    {
+                      backgroundColor: isDarkMode ? '#252525' : '#F5FBF8',
+                      borderColor: isDarkMode ? '#3A3A3A' : '#8FD3B2',
+                    },
                   ]}
                   activeOpacity={0.7}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -378,12 +440,18 @@ export default function RecipeDetailsScreen() {
                   <Ionicons
                     name="remove"
                     size={16}
-                    color={normalizedTargetServings <= 1 ? COLORS.muted : '#65B891'}
+                    color={normalizedTargetServings <= 1 ? palette.muted : '#65B891'}
                   />
                 </TouchableOpacity>
-                <Text style={styles.servingsValue}>{normalizedTargetServings}</Text>
+                <Text style={[styles.servingsValue, { color: isDarkMode ? '#FFFFFF' : '#65B891' }]}>{normalizedTargetServings}</Text>
                 <TouchableOpacity
-                  style={styles.servingsControl}
+                  style={[
+                    styles.servingsControl,
+                    {
+                      backgroundColor: isDarkMode ? '#252525' : '#F5FBF8',
+                      borderColor: isDarkMode ? '#3A3A3A' : '#8FD3B2',
+                    },
+                  ]}
                   activeOpacity={0.7}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   onPress={() =>
@@ -400,19 +468,25 @@ export default function RecipeDetailsScreen() {
           </View>
         </View>
 
-        <Text style={[styles.title, { textAlign: 'center', width: '100%', marginBottom: 20 }]}>
+        <Text style={[styles.title, { color: palette.text, textAlign: 'center', width: '100%', marginBottom: 20 }]}>
           {safeTitle}
         </Text>
 
         <View style={styles.categorySection}>
-          <Text style={styles.categoryLabel}>Category</Text>
+          <Text style={[styles.categoryLabel, { color: palette.muted }]}>Category</Text>
           <View style={styles.categoryRow}>
             {CATEGORIES.map((category) => {
               const isActive = category === currentCategory;
               return (
                 <TouchableOpacity
                   key={category}
-                  style={[styles.categoryPill, isActive && styles.categoryPillActive]}
+                  style={[
+                    styles.categoryPill,
+                    {
+                      backgroundColor: isActive ? '#65B891' : palette.surface,
+                      borderColor: isActive ? '#65B891' : palette.pillBorder,
+                    },
+                  ]}
                   activeOpacity={0.8}
                   onPress={() => {
                     setCurrentCategory(category as Category);
@@ -420,7 +494,7 @@ export default function RecipeDetailsScreen() {
                     Alert.alert('Updated', 'Recipe category changed!');
                   }}
                 >
-                  <Text style={[styles.categoryText, isActive && styles.categoryTextActive]}>
+                  <Text style={[styles.categoryText, { color: isActive ? '#FFFFFF' : palette.text }]}>
                     {category}
                   </Text>
                 </TouchableOpacity>
@@ -430,18 +504,18 @@ export default function RecipeDetailsScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Macros</Text>
+          <Text style={[styles.sectionTitle, { color: palette.text }]}>Macros</Text>
           {macros.map((macro) => {
             const percent = Math.min(macro.value / macro.goal, 1) * 100;
             return (
               <View key={macro.label} style={styles.macroBlock}>
                 <View style={styles.macroHeader}>
-                  <Text style={styles.macroLabel}>{macro.label}</Text>
-                  <Text style={styles.macroAmount}>
+                  <Text style={[styles.macroLabel, { color: palette.text }]}>{macro.label}</Text>
+                  <Text style={[styles.macroAmount, { color: palette.muted }]}>
                     {macro.display} / {macro.goal}g
                   </Text>
                 </View>
-                <View style={styles.progressTrack}>
+                <View style={[styles.progressTrack, { backgroundColor: palette.track }]}>
                   <View
                     style={[
                       styles.progressFill,
@@ -455,23 +529,23 @@ export default function RecipeDetailsScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Ingredients</Text>
+          <Text style={[styles.sectionTitle, { color: palette.text }]}>Ingredients</Text>
           {scaledIngredients.map((ingredient, index) => (
-            <View key={index} style={styles.ingredientRow}>
-              <Text style={styles.ingredientName}>{ingredient.name ?? 'Unknown ingredient'}</Text>
-              <Text style={styles.ingredientAmount}>{ingredient.amount ?? 'N/A'}</Text>
+            <View key={index} style={[styles.ingredientRow, { borderBottomColor: palette.border }]}>
+              <Text style={[styles.ingredientName, { color: palette.text }]}>{ingredient.name ?? 'Unknown ingredient'}</Text>
+              <Text style={[styles.ingredientAmount, { color: palette.muted }]}>{ingredient.amount ?? 'N/A'}</Text>
             </View>
           ))}
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Preparation Steps</Text>
+          <Text style={[styles.sectionTitle, { color: palette.text }]}>Preparation Steps</Text>
           {safeSteps.map((step, index) => (
             <View key={index} style={styles.stepRow}>
-              <View style={styles.stepIndex}>
-                <Text style={styles.stepIndexText}>{index + 1}</Text>
+              <View style={[styles.stepIndex, { backgroundColor: isDarkMode ? '#232323' : '#F3F4F6' }]}>
+                <Text style={[styles.stepIndexText, { color: palette.text }]}>{index + 1}</Text>
               </View>
-              <Text style={styles.stepText}>{step ?? 'N/A'}</Text>
+              <Text style={[styles.stepText, { color: palette.text }]}>{step ?? 'N/A'}</Text>
             </View>
           ))}
         </View>

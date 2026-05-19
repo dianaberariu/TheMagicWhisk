@@ -7,6 +7,7 @@ import { Image, ImageBackground, ScrollView, StyleSheet, Text, TextInput, Toucha
 import { useCookbookContext } from '../../CookbookContext';
 import { useGroceryContext } from '../../GroceryContext';
 import { useAuth } from '../../AuthContext';
+import { useThemeContext } from '../../context/ThemeContext';
 
 type Recipe = {
   id: string;
@@ -57,6 +58,7 @@ const CATEGORY_LINKS = [
 
 export default function HomeScreen() {
   const router = useRouter();
+  const { isDarkMode } = useThemeContext();
   const [searchQuery, setSearchQuery] = useState('');
   const [featuredRecipe, setFeaturedRecipe] = useState<any>(null);
   const { recipes } = useCookbookContext();
@@ -65,6 +67,22 @@ export default function HomeScreen() {
   const recentRecipes = (recipes as Recipe[]).slice(0, 4);
   const itemCount = groceryList.length;
   const displayName = user?.user_metadata?.full_name || 'Chef';
+  const avatarIconColor = isDarkMode ? '#FFFFFF' : COLORS.accentDark;
+  const palette = isDarkMode
+    ? {
+        surface: '#1A1A1A',
+        border: '#2C3230',
+        text: '#F5F7F8',
+        muted: '#A9B0B2',
+        cardSoft: '#1F1F1F',
+      }
+    : {
+        surface: '#FFFFFF',
+        border: '#E5E7EB',
+        text: '#111827',
+        muted: '#6B7280',
+        cardSoft: '#F2FAF6',
+      };
 
   useEffect(() => {
     const recipeList = recipes as Recipe[];
@@ -94,26 +112,32 @@ export default function HomeScreen() {
         <View style={styles.contentInset}>
             <View style={styles.headerRow}>
               <View style={styles.greetingWrap}>
-                <Text style={styles.greeting}>Hello, {displayName}!</Text>
-                <Text style={styles.greetingSubtitle}>What are we cooking today?</Text>
+                <Text style={[styles.greeting, { color: palette.text }]}>Hello, {displayName}!</Text>
+                <Text style={[styles.greetingSubtitle, { color: palette.muted }]}>What are we cooking today?</Text>
               </View>
               <TouchableOpacity
-                style={styles.iconShell}
+                style={[
+                  styles.iconShell,
+                  {
+                    backgroundColor: isDarkMode ? '#121212' : palette.cardSoft,
+                    borderColor: palette.border,
+                  },
+                ]}
                 activeOpacity={0.85}
                 onPress={() => router.push('/settings' as never)}
               >
-                <Ionicons name="person-circle-outline" size={34} color={COLORS.accentDark} />
+                <Ionicons name="person-circle-outline" size={34} color={avatarIconColor} />
               </TouchableOpacity>
             </View>
 
-          <View style={styles.searchBar}>
-            <Ionicons name="search" size={18} color={COLORS.muted} />
+          <View style={[styles.searchBar, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+            <Ionicons name="search" size={18} color={palette.muted} />
             <TextInput
               placeholder="Search recipes, ingredients..."
-              placeholderTextColor={COLORS.muted}
+              placeholderTextColor={palette.muted}
               value={searchQuery}
               onChangeText={setSearchQuery}
-              style={styles.searchInput}
+              style={[styles.searchInput, { color: palette.text }]}
               returnKeyType="search"
               onSubmitEditing={() => {
                 const trimmed = searchQuery.trim();
@@ -142,7 +166,7 @@ export default function HomeScreen() {
                       params: { category: category.name },
                     })
                   }
-                  style={styles.categoryCard}
+                  style={[styles.categoryCard, { backgroundColor: palette.surface, borderColor: palette.border }]}
                 >
                   <ImageBackground
                     source={{ uri: category.image }}
@@ -156,12 +180,24 @@ export default function HomeScreen() {
             </View>
           ) : (
             <View style={styles.emptyStateWrap}>
-              <View style={styles.emptyStateCard}>
-                <View style={styles.emptyStateIconShell}>
-                  <Ionicons name="restaurant-outline" size={28} color={COLORS.accent} />
+              <View style={[styles.emptyStateCard, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+                <View
+                  style={[
+                    styles.emptyStateIconShell,
+                    {
+                      backgroundColor: isDarkMode ? '#2A2A2A' : palette.cardSoft,
+                      borderColor: palette.border,
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name="restaurant-outline"
+                    size={34}
+                    color={isDarkMode ? '#FFFFFF' : COLORS.accentDark}
+                  />
                 </View>
-                <Text style={styles.emptyStateTitle}>Your cookbook is waiting</Text>
-                <Text style={styles.emptyStateSubtitle}>
+                <Text style={[styles.emptyStateTitle, { color: palette.text }]}>Your cookbook is waiting</Text>
+                <Text style={[styles.emptyStateSubtitle, { color: palette.muted }]}>
                   Head over to the Import tab to add your first recipe and start your culinary magic.
                 </Text>
                 <TouchableOpacity
@@ -183,7 +219,7 @@ export default function HomeScreen() {
                   style={{
                     fontSize: 18,
                     fontWeight: 'bold',
-                    color: '#111827',
+                    color: palette.text,
                     marginTop: 8,
                     marginBottom: 12,
                     textAlign: 'center',
@@ -194,7 +230,7 @@ export default function HomeScreen() {
                 <TouchableOpacity
                   activeOpacity={0.9}
                   onPress={() =>
-                    router.navigate({
+                    router.push({
                       pathname: '/(tabs)/cookbook/recipe-details',
                       params: { recipe: JSON.stringify(featuredRecipe) },
                     })
@@ -203,7 +239,7 @@ export default function HomeScreen() {
                     height: 200,
                     borderRadius: 20,
                     overflow: 'hidden',
-                    backgroundColor: '#F3F4F6',
+                    backgroundColor: palette.cardSoft,
                     shadowColor: '#000',
                     shadowOpacity: 0.1,
                     shadowOffset: { width: 0, height: 4 },
@@ -247,14 +283,14 @@ export default function HomeScreen() {
           )}
 
           <TouchableOpacity
-            style={styles.quickPeekCard}
+            style={[styles.quickPeekCard, { backgroundColor: palette.surface, borderColor: palette.border }]}
             activeOpacity={0.9}
             onPress={() => router.navigate('/grocery')}
           >
             <View style={styles.quickPeekRow}>
               <Ionicons name="cart-outline" size={20} color="#65B891" />
-              <Text style={styles.quickPeekText}>
-                You have <Text style={styles.quickPeekCount}>{itemCount}</Text> items in your grocery list
+              <Text style={[styles.quickPeekText, { color: palette.text }]}>
+                You have <Text style={[styles.quickPeekCount, { color: '#65B891' }]}>{itemCount}</Text> items in your grocery list
               </Text>
               <Ionicons name="chevron-forward" size={18} color={COLORS.muted} />
             </View>
@@ -262,7 +298,7 @@ export default function HomeScreen() {
 
           {recipes && recipes.length > 0 && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Recent Recipes</Text>
+              <Text style={[styles.sectionTitle, { color: palette.text }]}>Recent Recipes</Text>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -271,7 +307,7 @@ export default function HomeScreen() {
                 {recentRecipes.map((recipe) => (
                   <TouchableOpacity
                     key={recipe.id}
-                    style={styles.recentCard}
+                    style={[styles.recentCard, { backgroundColor: palette.surface, borderColor: palette.border }]}
                     activeOpacity={0.9}
                     onPress={() =>
                       router.push({
@@ -285,8 +321,8 @@ export default function HomeScreen() {
                       resizeMode="cover"
                       style={styles.recentImage}
                     />
-                    <Text style={styles.recentTitle}>{recipe.title}</Text>
-                    <Text style={styles.recentCalories}>{recipe.calories} kcal</Text>
+                    <Text style={[styles.recentTitle, { color: palette.text }]}>{recipe.title}</Text>
+                    <Text style={[styles.recentCalories, { color: palette.muted }]}>{recipe.calories} kcal</Text>
                   </TouchableOpacity>
                 ))}
               </ScrollView>
@@ -424,10 +460,10 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   emptyStateIconShell: {
-    width: 60,
-    height: 60,
-    borderRadius: 18,
-    backgroundColor: '#E3F3EB',
+    width: 68,
+    height: 68,
+    borderRadius: 22,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,

@@ -2,9 +2,19 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import ScreenBackground from '../../../components/ScreenBackground';
-import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  Animated,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { Swipeable } from 'react-native-gesture-handler';
 
 import { useCookbookContext } from '../../../CookbookContext';
+import { useThemeContext } from '../../../context/ThemeContext';
 
 type Macro = {
   protein: number | string;
@@ -74,10 +84,15 @@ function HighlightedText({ text, query }: { text?: string; query: string }) {
 }
 
 function MacroPill({ label, value }: { label: string; value: string }) {
+  const { isDarkMode } = useThemeContext();
+  const pillBg = isDarkMode ? '#232323' : '#F9FAFB';
+  const textColor = isDarkMode ? '#FFFFFF' : COLORS.text;
+  const mutedColor = isDarkMode ? '#FFFFFF' : COLORS.text;
+
   return (
-    <View style={styles.macroPill}>
-      <Text style={styles.macroValue}>{value}</Text>
-      <Text style={styles.macroLabel}>{label}</Text>
+    <View style={[styles.macroPill, { backgroundColor: pillBg }] }>
+      <Text style={[styles.macroValue, { color: textColor }]}>{value}</Text>
+      <Text style={[styles.macroLabel, { color: mutedColor }]}>{label}</Text>
     </View>
   );
 }
@@ -94,79 +109,163 @@ function formatMacroValue(value: number | string) {
 function RecipeCard({
   recipe,
   onPress,
+  onDelete,
   searchQuery,
 }: {
   recipe: Recipe;
   onPress: () => void;
+  onDelete: () => void;
   searchQuery: string;
 }) {
+  const { isDarkMode } = useThemeContext();
+  const cardBg = isDarkMode ? '#252525' : COLORS.card;
+  const cardBorder = isDarkMode ? '#2C3230' : COLORS.border;
+  const cardTextColor = isDarkMode ? '#FFFFFF' : COLORS.text;
+  const cardSubTextColor = isDarkMode ? '#121212' : COLORS.text;
+
+  const renderRightActions = (
+    progress: Animated.AnimatedInterpolation<number>,
+    dragX: Animated.AnimatedInterpolation<number>
+  ) => {
+    const translateX = dragX.interpolate({
+      inputRange: [-100, 0],
+      outputRange: [0, 72],
+      extrapolate: 'clamp',
+    });
+
+    const scale = progress.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0.94, 1],
+      extrapolate: 'clamp',
+    });
+
+    const opacity = progress.interpolate({
+      inputRange: [0, 0.5, 1],
+      outputRange: [0, 0.72, 1],
+      extrapolate: 'clamp',
+    });
+
+    return (
+      <View style={styles.swipeActionContainer}>
+        <Animated.View
+          style={[
+            styles.swipeDeleteButton,
+            {
+              opacity,
+              transform: [{ translateX }, { scale }],
+            },
+          ]}
+        >
+          <TouchableOpacity activeOpacity={0.92} onPress={onDelete} style={styles.swipeDeleteButtonInner}>
+            <Ionicons name="trash-outline" size={16} color="#FFFFFF" />
+            <Text style={styles.swipeDeleteText}>Delete</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      </View>
+    );
+  };
+
   return (
-    <TouchableOpacity style={styles.card} activeOpacity={0.9} onPress={onPress}>
-      <View style={styles.cardTitleStatsRow}>
-        <Text style={styles.cardTitleCentered}>
-          <HighlightedText text={recipe.title} query={searchQuery} />
-        </Text>
-        <View style={styles.cardStatsRow}>
-          <View style={styles.calorieBadge}>
-            <Text style={styles.calorieText}>{recipe.calories ?? 'N/A'} kcal</Text>
+    <Swipeable renderRightActions={renderRightActions} overshootRight={false} friction={2.2} rightThreshold={44}>
+      <TouchableOpacity
+        style={[
+          styles.card,
+          {
+            backgroundColor: cardBg,
+            borderColor: cardBorder,
+            shadowOpacity: isDarkMode ? 0.16 : 0.08,
+            shadowRadius: isDarkMode ? 18 : 16,
+            elevation: isDarkMode ? 2 : 3,
+          },
+        ]}
+        activeOpacity={0.9}
+        onPress={onPress}
+      >
+        <View style={styles.cardTitleStatsRow}>
+          <Text style={[styles.cardTitleCentered, { color: cardTextColor }] }>
+            <HighlightedText text={recipe.title} query={searchQuery} />
+          </Text>
+          <View style={styles.cardStatsRow}>
+            <View style={styles.calorieBadge}>
+              <Text style={[styles.calorieText, { color: cardSubTextColor }]}>{recipe.calories ?? 'N/A'} kcal</Text>
+            </View>
+            <View style={styles.servingsBadge}>
+              <Text style={[styles.servingsBadgeText, { color: cardSubTextColor }]}>
+                {recipe.servings ?? 1} serving{recipe.servings > 1 ? 's' : ''}
+              </Text>
+            </View>
           </View>
-          <View style={styles.servingsBadge}>
-            <Text style={styles.servingsBadgeText}>
-              {recipe.servings ?? 1} serving{recipe.servings > 1 ? 's' : ''}
-            </Text>
-          </View>
+          {searchQuery.trim().length > 0 &&
+            recipe.ingredients?.some((ing) =>
+              ing.name?.toLowerCase().includes(searchQuery.trim().toLowerCase())
+            ) && (
+              <View
+                style={{
+                  marginTop: 6,
+                  backgroundColor: isDarkMode ? '#232323' : '#F9FAFB',
+                  paddingHorizontal: 8,
+                  paddingVertical: 4,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: isDarkMode ? '#2C3230' : '#E5E7EB',
+                }}
+              >
+                <Text style={{ fontSize: 11, color: isDarkMode ? '#FFFFFF' : COLORS.text, textAlign: 'center' }}>
+                  Includes:{' '}
+                  <HighlightedText
+                    text={
+                      recipe.ingredients.find((ing) =>
+                        ing.name?.toLowerCase().includes(searchQuery.trim().toLowerCase())
+                      )?.name
+                    }
+                    query={searchQuery}
+                  />
+                </Text>
+              </View>
+            )}
         </View>
-        {searchQuery.trim().length > 0 &&
-          recipe.ingredients?.some((ing) =>
-            ing.name?.toLowerCase().includes(searchQuery.trim().toLowerCase())
-          ) && (
-          <View
-            style={{
-              marginTop: 6,
-              backgroundColor: '#F9FAFB',
-              paddingHorizontal: 8,
-              paddingVertical: 4,
-              borderRadius: 8,
-              borderWidth: 1,
-              borderColor: '#E5E7EB',
-            }}
-          >
-            <Text style={{ fontSize: 11, color: '#6B7280', textAlign: 'center' }}>
-              Includes:{' '}
-              <HighlightedText
-                text={
-                  recipe.ingredients.find((ing) =>
-                    ing.name?.toLowerCase().includes(searchQuery.trim().toLowerCase())
-                  )?.name
-                }
-                query={searchQuery}
-              />
-            </Text>
-          </View>
-        )}
-      </View>
-      <View style={styles.macroRow}>
-        <MacroPill label="Protein" value={formatMacroValue(recipe.macros.protein)} />
-        <MacroPill label="Carbs" value={formatMacroValue(recipe.macros.carbs)} />
-        <MacroPill
-          label="Fats"
-          value={formatMacroValue(recipe.macros.fats ?? recipe.macros.fat ?? 'N/A')}
-        />
-      </View>
-    </TouchableOpacity>
+        <View style={styles.macroRow}>
+          <MacroPill label="Protein" value={formatMacroValue(recipe.macros.protein)} />
+          <MacroPill label="Carbs" value={formatMacroValue(recipe.macros.carbs)} />
+          <MacroPill label="Fats" value={formatMacroValue(recipe.macros.fats ?? recipe.macros.fat ?? 'N/A')} />
+        </View>
+      </TouchableOpacity>
+    </Swipeable>
   );
 }
 
 export default function CookbookList() {
   const router = useRouter();
+  const { isDarkMode } = useThemeContext();
   const params = useLocalSearchParams<{ category?: string; query?: string }>();
   const normalizedCategory = CATEGORIES.includes(params.category as FilterCategory)
     ? (params.category as FilterCategory)
     : 'All';
   const normalizedQuery = typeof params.query === 'string' ? params.query : '';
-  const { recipes } = useCookbookContext();
+  const { recipes, deleteRecipe } = useCookbookContext();
   const [activeCategory, setActiveCategory] = useState<FilterCategory>(normalizedCategory);
   const [searchQuery, setSearchQuery] = useState(normalizedQuery);
+  const palette = isDarkMode
+    ? {
+        surface: '#1A1A1A',
+        border: '#2C3230',
+        text: '#F5F7F8',
+        muted: '#A9B0B2',
+        chipActive: '#65B891',
+        chipText: '#F5F7F8',
+        softCard: '#1F1F1F',
+        pillBg: '#232323',
+      }
+    : {
+        surface: '#FFFFFF',
+        border: '#E5E7EB',
+        text: '#111827',
+        muted: '#6B7280',
+        chipActive: '#65B891',
+        chipText: '#FFFFFF',
+        softCard: '#F9FAFB',
+        pillBg: '#F9FAFB',
+      };
 
   useEffect(() => {
     setActiveCategory(normalizedCategory);
@@ -204,15 +303,15 @@ export default function CookbookList() {
   return (
     <ScreenBackground>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <Text style={styles.title}>Your Cookbook</Text>
-        <View style={styles.searchBar}>
-          <Ionicons name="search" size={18} color={COLORS.muted} />
+        <Text style={[styles.title, { color: palette.text }]}>Your Cookbook</Text>
+        <View style={[styles.searchBar, { backgroundColor: palette.surface, borderColor: palette.border }] }>
+          <Ionicons name="search" size={18} color={palette.muted} />
           <TextInput
             placeholder="Search recipes, ingredients..."
-            placeholderTextColor={COLORS.muted}
+            placeholderTextColor={palette.muted}
             value={searchQuery}
             onChangeText={setSearchQuery}
-            style={styles.searchInput}
+            style={[styles.searchInput, { color: palette.text }]}
             returnKeyType="search"
           />
         </View>
@@ -228,11 +327,12 @@ export default function CookbookList() {
               key={label}
               style={[
                 styles.actionButton,
-                isActive && styles.actionButtonActive,
+                { backgroundColor: palette.surface, borderColor: palette.border },
+                isActive && { backgroundColor: palette.chipActive, borderColor: palette.chipActive },
               ]}
               onPress={() => setActiveCategory(label)}
             >
-              <Text style={[styles.actionText, isActive && styles.actionTextActive]}>{label}</Text>
+              <Text style={[styles.actionText, { color: palette.text }, isActive && { color: palette.chipText }]}>{label}</Text>
             </TouchableOpacity>
             );
           })}
@@ -243,6 +343,7 @@ export default function CookbookList() {
               key={recipe.id}
               recipe={recipe}
               searchQuery={searchQuery}
+              onDelete={() => deleteRecipe(recipe.id)}
               onPress={() =>
                 router.push({
                   pathname: '/(tabs)/cookbook/recipe-details',
@@ -280,10 +381,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: COLORS.border,
     paddingHorizontal: 14,
     paddingVertical: 12,
     shadowColor: '#000000',
@@ -307,30 +406,19 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   actionButton: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 999,
     paddingVertical: 10,
     paddingHorizontal: 18,
     borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  actionButtonActive: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
   },
   actionText: {
     fontSize: 14,
     fontWeight: '600',
-    color: COLORS.text,
-  },
-  actionTextActive: {
-    color: '#FFFFFF',
   },
   listSection: {
     gap: 16,
   },
   card: {
-    backgroundColor: COLORS.card,
     borderRadius: 16,
     padding: 16,
     shadowColor: '#000000',
@@ -339,7 +427,42 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 3,
     borderWidth: 1,
-    borderColor: COLORS.border,
+  },
+  swipeActionContainer: {
+    justifyContent: 'center',
+    alignItems: 'stretch',
+    marginVertical: 6,
+    marginLeft: 10,
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  swipeDeleteButton: {
+    width: 88,
+    flex: 1,
+    backgroundColor: '#D98C8C',
+    borderWidth: 1,
+    borderColor: '#C97C7C',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000000',
+    shadowOpacity: 0.08,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 10,
+    elevation: 1,
+  },
+  swipeDeleteButtonInner: {
+    flex: 1,
+    width: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 14,
+    gap: 5,
+  },
+  swipeDeleteText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
   },
   cardTitleStatsRow: {
     flexDirection: 'row',
@@ -357,7 +480,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   highlightText: {
-    color: COLORS.primary,
     fontWeight: '700',
   },
   cardStatsRow: {
@@ -376,7 +498,6 @@ const styles = StyleSheet.create({
   calorieText: {
     fontSize: 12,
     fontWeight: '600',
-    color: COLORS.primary,
   },
   servingsBadge: {
     backgroundColor: '#E6F4EA',
@@ -387,7 +508,6 @@ const styles = StyleSheet.create({
   servingsBadgeText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#2F855A',
   },
   macroRow: {
     flexDirection: 'row',
@@ -395,7 +515,6 @@ const styles = StyleSheet.create({
   },
   macroPill: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
     borderRadius: 12,
     paddingVertical: 10,
     alignItems: 'center',

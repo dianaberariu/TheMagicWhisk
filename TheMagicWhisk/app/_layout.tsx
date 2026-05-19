@@ -3,44 +3,67 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useRef } from 'react';
 import { ActivityIndicator, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
 
 import { AuthProvider, useAuth } from '../AuthContext';
 import { CookbookProvider, useCookbookContext } from '../CookbookContext';
-import { useColorScheme } from '@/hooks/use-color-scheme';
 import { GroceryProvider } from '../GroceryContext';
 import { useGroceryContext } from '../GroceryContext';
+import { ThemeProvider as AppThemeProvider, useThemeContext } from '../context/ThemeContext';
 
 export const unstable_settings = {
   anchor: '(tabs)',
 };
 
+type GroceryContextValue = {
+  clearGroceryList: () => Promise<void> | void;
+};
+
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
+  return (
+    <AppThemeProvider>
+      <RootLayoutShell />
+    </AppThemeProvider>
+  );
+}
+
+function RootLayoutShell() {
+  const { isDarkMode, isThemeReady } = useThemeContext();
+
+  if (!isThemeReady) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#121212' }}>
+        <ActivityIndicator size="large" color="#65B891" />
+      </View>
+    );
+  }
 
   return (
-    <AuthProvider>
-      <CookbookProvider>
-        <GroceryProvider>
-          <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-            <RootLayoutContent />
-            <StatusBar style="auto" />
-          </ThemeProvider>
-        </GroceryProvider>
-      </CookbookProvider>
-    </AuthProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <AuthProvider>
+        <CookbookProvider>
+          <GroceryProvider>
+            <ThemeProvider value={isDarkMode ? DarkTheme : DefaultTheme}>
+              <RootLayoutContent />
+              <StatusBar style={isDarkMode ? 'light' : 'dark'} />
+            </ThemeProvider>
+          </GroceryProvider>
+        </CookbookProvider>
+      </AuthProvider>
+    </GestureHandlerRootView>
   );
 }
 
 function RootLayoutContent() {
-  const { user, loading } = useAuth();
-  const { recipes, loading: cookbookLoading } = useCookbookContext();
-  const { clearGroceryList } = useGroceryContext();
+  const { user, session, loading, isInitialized } = useAuth();
+  const { recipes } = useCookbookContext();
+  const { clearGroceryList } = useGroceryContext() as GroceryContextValue;
   const router = useRouter();
   const segments = useSegments();
   const firstSegment = segments[0];
-  const previousUserIdRef = useRef(null);
-  const previousRecipeCountRef = useRef(null);
+  const previousUserIdRef = useRef<string | null>(null);
+  const previousRecipeCountRef = useRef<number | null>(null);
 
   useEffect(() => {
     const currentUserId = user?.id ?? null;
@@ -50,7 +73,7 @@ function RootLayoutContent() {
       previousRecipeCountRef.current = null;
     }
 
-    if (loading || cookbookLoading) {
+    if (loading) {
       return;
     }
 
@@ -67,24 +90,26 @@ function RootLayoutContent() {
     }
 
     previousRecipeCountRef.current = recipeCount;
-  }, [clearGroceryList, cookbookLoading, loading, recipes, user?.id]);
+  }, [clearGroceryList, loading, recipes, user?.id]);
 
   useEffect(() => {
-    if (loading) {
+    if (!isInitialized) {
       return;
     }
 
-    if (!user && firstSegment !== 'login') {
+    const isAuthRoute = firstSegment === 'login';
+
+    if (!session && !isAuthRoute) {
       router.replace('/login');
       return;
     }
 
-    if (user && firstSegment === 'login') {
+    if (session && isAuthRoute) {
       router.replace('/(tabs)');
     }
-  }, [firstSegment, loading, router, user]);
+  }, [firstSegment, isInitialized, router, session]);
 
-  if (loading) {
+  if (!isInitialized || loading) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
         <ActivityIndicator size="large" />
@@ -93,7 +118,7 @@ function RootLayoutContent() {
   }
 
   return (
-    <Stack>
+    <Stack screenOptions={{ animation: 'fade' }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="login" options={{ headerShown: false }} />
       <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />

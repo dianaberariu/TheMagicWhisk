@@ -69,7 +69,9 @@ def get_video_description(url: str) -> str:
 
 def parse_recipe_with_ai(text: str) -> dict:
     system_prompt = (
-        "You are an expert culinary chef and nutritionist. Detect the source language of the input text. "
+        "You are an expert culinary chef and nutritionist. First, analyze the provided text or transcript and determine whether it is actually related to food, cooking, a recipe, or culinary instructions. "
+        "If the content is not about cooking or food at all (for example, a dance video, gaming clip, random vlog, or unrelated article), do NOT invent ingredients or a recipe. Instead, return ONLY this exact JSON object: { \"error\": \"NOT_A_RECIPE\" }. "
+        "If the content is related to food or cooking, detect the source language of the input text. "
         "Extract the recipe and return ONLY a valid JSON object with this structure: "
         "{ 'languages': { 'en': { ... }, 'ro': { ... } } }. "
         "Each language object must include these exact keys: 'title' (string), 'servings' (number), "
@@ -203,6 +205,9 @@ def extract(request: ExtractRequest) -> dict:
             "status": "error",
             "message": f"Failed to parse recipe: {exc}",
         }
+
+    if recipe.get("error") == "NOT_A_RECIPE":
+        return recipe
 
     client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     image_prompt = recipe["languages"]["en"]["image_prompt"]

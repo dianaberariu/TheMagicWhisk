@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Alert, ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { useGroceryContext } from '../../GroceryContext';
+import { useThemeContext } from '../../context/ThemeContext';
 
 type GroceryItem = {
 	id: string;
@@ -31,6 +32,7 @@ const COLORS = {
 };
 
 export default function GroceryScreen() {
+	const { isDarkMode } = useThemeContext();
 	const {
 		groceryList,
 		isLoading,
@@ -44,26 +46,44 @@ export default function GroceryScreen() {
 		() => groceryList.filter((item) => item.is_completed).length,
 		[groceryList]
 	);
+	const palette = isDarkMode
+		? {
+				surface: '#1A1A1A',
+				border: '#2C3230',
+				text: '#F5F7F8',
+				muted: '#A9B0B2',
+				subtle: '#232323',
+			}
+		: {
+				surface: '#FFFFFF',
+				border: '#E5E7EB',
+				text: '#111827',
+				muted: '#6B7280',
+				subtle: '#F9FAFB',
+			};
 
 	if (isLoading && groceryList.length === 0) {
 		return (
 			<ScreenBackground>
 				<View style={styles.loadingState}>
 					<ActivityIndicator size="large" color={COLORS.accent} />
-					<Text style={styles.loadingText}>Syncing your groceries...</Text>
+					<Text style={[styles.loadingText, { color: palette.muted }]}>Syncing your groceries...</Text>
 				</View>
 			</ScreenBackground>
 		);
 	}
 
 	return (
-		<ScreenBackground>
+			<ScreenBackground>
 			<View style={styles.container}>
 				<View style={styles.headerRow}>
-					<Text style={styles.title}>Grocery List</Text>
+						<Text style={[styles.title, { color: palette.text }]}>Grocery List</Text>
 					{groceryList.length > 0 && (
 						<TouchableOpacity
-							style={styles.clearButton}
+								style={[
+									styles.clearButton,
+									{ backgroundColor: palette.surface, borderColor: palette.border },
+								]}
 							activeOpacity={0.7}
 							disabled={isMutating}
 							onPress={() =>
@@ -77,34 +97,37 @@ export default function GroceryScreen() {
 								)
 							}
 						>
-							<Text style={styles.clearButtonText}>Clear All</Text>
+								<Text style={[styles.clearButtonText, { color: palette.text }]}>Clear All</Text>
 						</TouchableOpacity>
 					)}
 				</View>
-				<Text style={styles.subtitle}>
+					<Text style={[styles.subtitle, { color: palette.muted }]}> 
 					{checkedCount}/{groceryList.length} items checked
 				</Text>
 				{isLoading && groceryList.length > 0 && (
 					<View style={styles.syncRow}>
 						<ActivityIndicator size="small" color={COLORS.accent} />
-						<Text style={styles.syncText}>Updating your list...</Text>
+							<Text style={[styles.syncText, { color: palette.muted }]}>Updating your list...</Text>
 					</View>
 				)}
 				<ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.list}>
 					{groceryList.length === 0 ? (
-						<Text style={styles.emptyState}>
+						  <Text style={[styles.emptyState, { color: palette.muted }] }>
 							Your grocery list is empty. Add ingredients from a recipe to save them here.
 						</Text>
 					) : (
 						groceryList.map((item) => (
 							<TouchableOpacity
 								key={item.id}
-								style={styles.row}
+												style={[
+													styles.row,
+													{ borderBottomColor: palette.border },
+												]}
 								activeOpacity={0.8}
 								disabled={isMutating}
 								onPress={() => toggleGroceryItem(item.id)}
 							>
-								<Ionicons
+																<Ionicons
 									name={item.is_completed ? 'checkmark-circle' : 'ellipse-outline'}
 									size={22}
 									color={item.is_completed ? COLORS.accent : COLORS.muted}
@@ -112,14 +135,15 @@ export default function GroceryScreen() {
 								/>
 								<View style={styles.itemTextWrap}>
 									<Text
-										style={[
-											styles.itemText,
-											item.is_completed && styles.itemTextChecked,
-										]}
+																		style={[
+																			styles.itemText,
+																			{ color: palette.text },
+																			item.is_completed && styles.itemTextChecked,
+																		]}
 									>
 										{item.name}
 									</Text>
-									<Text style={styles.itemAmount}>
+																		<Text style={[styles.itemAmount, { color: palette.muted }]}>
 										{item.is_completed ? 'Completed' : 'Tap to mark complete'}
 									</Text>
 								</View>

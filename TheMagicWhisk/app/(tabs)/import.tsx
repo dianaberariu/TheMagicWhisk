@@ -1,9 +1,10 @@
 import React, { useCallback, useState } from 'react';
 import { useFocusEffect, useRouter } from 'expo-router';
 import ScreenBackground from '../../components/ScreenBackground';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { useCookbookContext } from '../../CookbookContext';
+import { useThemeContext } from '../../context/ThemeContext';
 
 const COLORS = {
   background: '#FFFFFF',
@@ -17,12 +18,38 @@ const COLORS = {
 const CATEGORIES = ['Breakfast', 'Lunch', 'Dinner', 'Sweets'] as const;
 type Category = (typeof CATEGORIES)[number];
 
+const SUPPORTED_DOMAINS = ['tiktok.com', 'instagram.com', 'youtube.com', 'youtu.be'];
+
+function isSupportedRecipeLink(value: string) {
+  const trimmed = value.trim();
+  const urlPattern = /^(https?:\/\/)?([\w-]+\.)+[\w-]+(\/[\S]*)?$/i;
+
+  if (!trimmed || !urlPattern.test(trimmed)) {
+    return false;
+  }
+
+  try {
+    const normalizedUrl = trimmed.startsWith('http://') || trimmed.startsWith('https://')
+      ? trimmed
+      : `https://${trimmed}`;
+    const parsedUrl = new URL(normalizedUrl);
+    return SUPPORTED_DOMAINS.some((domain) => {
+      const hostname = parsedUrl.hostname.toLowerCase();
+      return hostname === domain || hostname.endsWith(`.${domain}`);
+    });
+  } catch {
+    return false;
+  }
+}
+
 export default function ImportScreen() {
   const router = useRouter();
   const { addRecipe } = useCookbookContext();
+  const { isDarkMode } = useThemeContext();
   const [selectedCategory, setSelectedCategory] = useState<Category>('Lunch');
   const [isLoading, setIsLoading] = useState(false);
   const [urlInput, setUrlInput] = useState('');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -35,17 +62,37 @@ export default function ImportScreen() {
       return;
     }
 
+    setErrorMessage(null);
+
+    const trimmedUrl = urlInput.trim();
+
+    if (!trimmedUrl || !isSupportedRecipeLink(trimmedUrl)) {
+      setErrorMessage(
+        'Please paste a valid recipe or video link from TikTok, Instagram, YouTube, or YouTube Shorts.'
+      );
+      setUrlInput('');
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     try {
-      const response = await fetch('http://192.168.100.149:8000/api/extract', {
+      const response = await fetch('http://192.168.1.171:8000/api/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: urlInput }),
       });
       const data = await response.json();
 
+      if (data?.error === 'NOT_A_RECIPE') {
+        setErrorMessage("We couldn't find a recipe in this link. Please make sure it's a cooking video or article.");
+        setUrlInput('');
+        return;
+      }
+
       if (data?.status === 'error') {
-        Alert.alert('Import Failed', data.message || 'An unknown error occurred.');
+        setErrorMessage(data.message || 'An unknown error occurred while extracting the recipe.');
+        setUrlInput('');
         return;
       }
 
@@ -85,10 +132,10 @@ export default function ImportScreen() {
         });
       }
     } catch (error) {
-      Alert.alert(
-        'Network Error',
+      setErrorMessage(
         'Could not connect to the backend. Check your IP address and ensure the server is running.'
       );
+      setUrlInput('');
       console.error('Backend connection failed:', error);
     } finally {
       setIsLoading(false);
@@ -98,18 +145,24 @@ export default function ImportScreen() {
   return (
     <ScreenBackground>
       <View style={styles.container}>
-        <Text style={styles.title}>Import Recipe</Text>
+        <Text style={[styles.title, { color: isDarkMode ? '#FFFFFF' : '#121212' }]}>Import Recipe</Text>
         <TextInput
           placeholder="https://www.tiktok.com/@creator/video/123"
           placeholderTextColor={COLORS.muted}
           style={styles.input}
           value={urlInput}
-          onChangeText={setUrlInput}
+          onChangeText={(text) => {
+            setUrlInput(text);
+            if (errorMessage) {
+              setErrorMessage(null);
+            }
+          }}
           autoCapitalize="none"
           autoCorrect={false}
           keyboardType="url"
           textContentType="URL"
         />
+        {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
         <View style={styles.categorySection}>
           <Text style={styles.categoryLabel}>Save as:</Text>
           <View style={styles.categoryRow}>
@@ -160,7 +213,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 22,
     fontWeight: '700',
-    color: COLORS.text,
+    color: '#FFFFFF',
     textAlign: 'center',
     width: '100%',
     marginBottom: 18,
@@ -174,7 +227,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     fontSize: 15,
     color: COLORS.text,
-    marginBottom: 18,
+    marginBottom: 10,
+  },
+  errorText: {
+    marginTop: 8,
+    marginBottom: 10,
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#E63946',
+    fontWeight: '600',
   },
   categorySection: {
     marginBottom: 20,

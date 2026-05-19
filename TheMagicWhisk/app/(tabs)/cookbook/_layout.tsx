@@ -5,6 +5,7 @@ export default function CookbookLayout() {
   return (
     <Stack
       screenOptions={{
+        animation: 'fade',
         headerStyle: { backgroundColor: '#FFFFFF' },
         headerShadowVisible: false,
         headerTintColor: '#111827',

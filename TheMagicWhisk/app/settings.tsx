@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Ionicons, FontAwesome } from '@expo/vector-icons';
 import { useRouter, Stack } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import ScreenBackground from '../components/ScreenBackground';
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -11,10 +12,13 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  Switch,
   View,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { useAuth } from '../AuthContext';
+import { useThemeContext } from '../context/ThemeContext';
 import { supabase } from '../supabase';
 
 const COLORS = {
@@ -28,19 +32,99 @@ const COLORS = {
   accentDark: '#4F9B78',
 };
 
+const LIGHT_THEME = {
+  background: '#F3F8F4',
+  surface: '#FFFFFF',
+  surfaceSoft: '#F6FBF8',
+  text: '#111827',
+  muted: '#6B7280',
+  border: '#DCE9E2',
+  heroBorder: '#E1ECE5',
+  inputBackground: '#FBFDFC',
+  switchTrackFalse: '#DCE9E2',
+  switchTrackTrue: '#65B891',
+  switchThumb: '#FFFFFF',
+  secondaryBorder: '#374151',
+  secondaryText: '#374151',
+  destructiveText: '#D98C8C',
+  destructiveIcon: '#D98C8C',
+};
+
+const DARK_THEME = {
+  background: '#121212',
+  surface: '#1A1A1A',
+  surfaceSoft: '#1F1F1F',
+  text: '#F5F7F8',
+  muted: '#A9B0B2',
+  border: '#2C3230',
+  heroBorder: '#2A3834',
+  inputBackground: '#181818',
+  switchTrackFalse: '#404040',
+  switchTrackTrue: '#65B891',
+  switchThumb: '#FFFFFF',
+  secondaryBorder: '#9CA3AF',
+  secondaryText: '#E5E7EB',
+  destructiveText: '#D8A1A1',
+  destructiveIcon: '#D8A1A1',
+};
+
 export default function SettingsScreen() {
   const router = useRouter();
   const { user, signOut } = useAuth();
+  const { isDarkMode, toggleTheme } = useThemeContext();
   const [firstName, setFirstName] = useState('');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState<'idle' | 'success' | 'error'>('idle' as 'idle');
   const [focused, setFocused] = useState(false);
+  const theme = isDarkMode ? DARK_THEME : LIGHT_THEME;
+
+  const handleThemeToggle = async () => {
+    const nextPreference = isDarkMode ? 'light' : 'dark';
+    toggleTheme();
+
+    const { error } = await supabase.auth.updateUser({
+      data: { theme_preference: nextPreference },
+    });
+
+    if (error) {
+      console.error('Failed to update theme preference', error);
+    }
+  };
 
   useEffect(() => {
     const fullName = user?.user_metadata?.full_name;
     setFirstName(typeof fullName === 'string' ? fullName : '');
   }, [user?.id, user?.user_metadata?.full_name]);
+
+  const handleDeleteAccount = async () => {
+    Alert.alert(
+      'Delete Account',
+      'Are you absolutely sure? This action is permanent and all your saved culinary data will be lost forever.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error } = await supabase.rpc('delete_my_account');
+              if (error) {
+                Alert.alert('Delete Account Failed', 'Please try again in a moment.');
+                return;
+              }
+
+              await AsyncStorage.removeItem('appTheme');
+              await supabase.auth.signOut();
+              router.replace('/login');
+            } catch (err) {
+              console.error('Delete account failed', err);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const handleSave = async () => {
     const trimmedFirstName = firstName.trim();
@@ -81,159 +165,228 @@ export default function SettingsScreen() {
     <>
       <Stack.Screen options={{ headerShown: false }} />
 
-      <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.container}
-      >
-        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-          <View style={styles.backgroundGlowTop} />
-          <View style={styles.backgroundGlowBottom} />
-
-          <View style={styles.contentInset}>
-            <View style={styles.topRow}>
-              <Pressable
-                onPress={() => router.replace('/(tabs)')}
-                style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
-              >
-                <Ionicons name="chevron-back" size={18} color={COLORS.text} />
-                <Text style={styles.backButtonText}>Back</Text>
-              </Pressable>
-            </View>
-
-            <View style={styles.heroCard}>
-              <View style={styles.iconShell}>
-                <Ionicons name="person-circle-outline" size={34} color={COLORS.accentDark} />
-              </View>
-              <Text style={styles.title}>Profile &amp; Settings</Text>
-              <Text style={styles.subtitle}>
-                A calm, elegant place to refine your account details and keep your culinary identity polished.
-              </Text>
-            </View>
-
-            <View style={styles.sectionCard}>
-              <Text style={styles.sectionTitle}>Account</Text>
-
-              <View style={styles.emailBlock}>
-                <Text style={styles.fieldLabel}>Current Email</Text>
-                <View style={styles.emailPill}>
-                  <Ionicons name="mail-outline" size={16} color={COLORS.accentDark} />
-                  <Text style={styles.emailText} numberOfLines={1}>
-                    {email}
-                  </Text>
-                </View>
+      <ScreenBackground>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.container}
+        >
+          <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+            <View style={styles.contentInset}>
+              <View style={styles.topRow}>
+                <Pressable
+                  onPress={() => router.replace('/(tabs)')}
+                  style={({ pressed }) => [
+                    styles.backButton,
+                    { backgroundColor: theme.surface, borderColor: theme.border },
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Ionicons name="chevron-back" size={18} color={theme.text} />
+                  <Text style={[styles.backButtonText, { color: theme.text }]}>Back</Text>
+                </Pressable>
               </View>
 
-              <View style={styles.fieldBlock}>
-                <Text style={styles.fieldLabel}>Edit First Name</Text>
-                <TextInput
-                  value={firstName}
-                  onChangeText={setFirstName}
-                  placeholder="Enter your first name"
-                  placeholderTextColor="#98A6A0"
-                  autoCapitalize="words"
-                  autoCorrect={false}
-                  textContentType="givenName"
-                  autoComplete="name"
-                  onFocus={() => setFocused(true)}
-                  onBlur={() => setFocused(false)}
-                  style={[styles.input, focused && styles.inputFocused]}
-                />
-              </View>
-
-              <Pressable
-                onPress={handleSave}
-                disabled={saving}
-                style={({ pressed }) => [
-                  styles.saveButton,
-                  pressed && styles.pressed,
-                  saving && styles.saveButtonDisabled,
+              <View
+                style={[
+                  styles.heroCard,
+                  {
+                    backgroundColor: theme.surface,
+                    borderColor: theme.heroBorder,
+                  },
                 ]}
               >
-                {saving ? (
-                  <ActivityIndicator color="#FFFFFF" />
-                ) : (
-                  <>
-                    <Ionicons name="checkmark-circle-outline" size={18} color="#FFFFFF" />
-                    <Text style={styles.saveButtonText}>Save Changes</Text>
-                  </>
-                )}
-              </Pressable>
-
-              {/* Change Password (secondary action) */}
-              <Pressable
-                onPress={() => console.log('Change Password tapped')}
-                style={({ pressed }) => [
-                  styles.changePasswordButton,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <View style={styles.changePasswordContent}>
-                  <FontAwesome name="lock" size={14} color={'#374151'} />
-                  <Text style={styles.changePasswordText}>Change Password</Text>
-                </View>
-              </Pressable>
-
-              {/* Log Out (secondary outline action) */}
-              <Pressable
-                onPress={async () => {
-                  try {
-                    const { error } = await (signOut?.() as Promise<any>);
-                    if (error) {
-                      console.error('Failed to sign out', error);
-                    } else {
-                      router.replace('/login');
-                    }
-                  } catch (err) {
-                    console.error('Sign out error', err);
-                  }
-                }}
-                style={({ pressed }) => [
-                  styles.logoutOutlineButton,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <View style={styles.logoutOutlineContent}>
-                  <Ionicons name="log-out-outline" size={16} color={COLORS.accentDark} />
-                  <Text style={styles.logoutOutlineText}>Log Out</Text>
-                </View>
-              </Pressable>
-
-              {message ? (
                 <View
                   style={[
-                    styles.messageBox,
-                    messageType === 'error' ? styles.messageError : styles.messageSuccess,
+                    styles.iconShell,
+                    {
+                      backgroundColor: isDarkMode ? '#2A2A2A' : theme.surfaceSoft,
+                      borderColor: theme.border,
+                    },
                   ]}
                 >
                   <Ionicons
-                    name={messageType === 'error' ? 'warning-outline' : 'checkmark-circle-outline'}
-                    size={16}
-                    color={messageType === 'error' ? '#B45309' : COLORS.accentDark}
+                    name="person-circle-outline"
+                    size={34}
+                    color={isDarkMode ? '#FFFFFF' : COLORS.accentDark}
                   />
-                  <Text
+                </View>
+                <Text style={[styles.title, { color: theme.text }]}>Profile &amp; Settings</Text>
+                <Text style={[styles.subtitle, { color: theme.muted }]}>
+                  A calm, elegant place to refine your account details and keep your culinary identity polished.
+                </Text>
+              </View>
+
+              <View
+                style={[
+                  styles.sectionCard,
+                  { backgroundColor: theme.surface, borderColor: theme.border },
+                ]}
+              >
+                <Text style={[styles.sectionTitle, { color: theme.text }]}>Account</Text>
+
+                <View style={styles.emailBlock}>
+                  <Text style={[styles.fieldLabel, { color: theme.text }]}>Current Email</Text>
+                  <View
                     style={[
-                      styles.messageText,
-                      messageType === 'error' ? styles.messageTextError : styles.messageTextSuccess,
+                      styles.emailPill,
+                      { backgroundColor: theme.surfaceSoft, borderColor: theme.border },
                     ]}
                   >
-                    {message}
-                  </Text>
+                    <Ionicons name="mail-outline" size={16} color={COLORS.accentDark} />
+                    <Text style={[styles.emailText, { color: theme.text }]} numberOfLines={1}>
+                      {email}
+                    </Text>
+                  </View>
                 </View>
-              ) : null}
 
-              {/* Subtle Delete Link */}
-              <Pressable onPress={() => console.log('Delete Account tapped')} style={styles.deleteLink}>
-                <View style={styles.deleteLinkContent}>
-                  <FontAwesome name="trash" size={14} color={'#D98C8C'} />
-                  <Text style={styles.deleteLinkText}>Delete Account</Text>
+                <View style={styles.fieldBlock}>
+                  <Text style={[styles.fieldLabel, { color: theme.text }]}>Edit First Name</Text>
+                  <TextInput
+                    value={firstName}
+                    onChangeText={setFirstName}
+                    placeholder="Enter your first name"
+                    placeholderTextColor={theme.muted}
+                    autoCapitalize="words"
+                    autoCorrect={false}
+                    textContentType="givenName"
+                    autoComplete="name"
+                    onFocus={() => setFocused(true)}
+                    onBlur={() => setFocused(false)}
+                    style={[
+                      styles.input,
+                      {
+                        backgroundColor: theme.inputBackground,
+                        borderColor: theme.border,
+                        color: theme.text,
+                      },
+                      focused && styles.inputFocused,
+                    ]}
+                  />
                 </View>
-              </Pressable>
+
+                <View
+                  style={[
+                    styles.toggleRow,
+                    {
+                      backgroundColor: theme.surfaceSoft,
+                      borderColor: theme.border,
+                    },
+                  ]}
+                >
+                  <View style={styles.toggleRowTextWrap}>
+                    <Text style={[styles.toggleLabel, { color: theme.text }]}>Dark Mode</Text>
+                    <Text style={[styles.toggleSubtitle, { color: theme.muted }]}>
+                      Switch between the light and dark culinary themes.
+                    </Text>
+                  </View>
+                  <Switch
+                    value={isDarkMode}
+                    onValueChange={handleThemeToggle}
+                    trackColor={{
+                      false: theme.switchTrackFalse,
+                      true: theme.switchTrackTrue,
+                    }}
+                    thumbColor={theme.switchThumb}
+                    ios_backgroundColor={theme.switchTrackFalse}
+                  />
+                </View>
+
+                <Pressable
+                  onPress={handleSave}
+                  disabled={saving}
+                  style={({ pressed }) => [
+                    styles.saveButton,
+                    pressed && styles.pressed,
+                    saving && styles.saveButtonDisabled,
+                  ]}
+                >
+                  {saving ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <Ionicons name="checkmark-circle-outline" size={20} color="#FFFFFF" />
+                      <Text style={styles.saveButtonText}>Save Changes</Text>
+                    </>
+                  )}
+                </Pressable>
+
+                {/* Log Out (secondary outline action) */}
+                <Pressable
+                  onPress={async () => {
+                    try {
+                      await AsyncStorage.removeItem('appTheme');
+                      const { error } = await signOut();
+                      if (error) {
+                        console.error('Failed to sign out', error);
+                        return;
+                      }
+                      router.replace('/login');
+                    } catch (err) {
+                      console.error('Sign out error', err);
+                    }
+                  }}
+                  style={({ pressed }) => [
+                    styles.secondaryButton,
+                    { borderColor: theme.border, backgroundColor: theme.surfaceSoft },
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <View style={styles.secondaryButtonContent}>
+                    <Ionicons name="log-out-outline" size={20} color={theme.secondaryText} />
+                    <Text style={[styles.secondaryButtonText, { color: theme.secondaryText }]}>Log Out</Text>
+                  </View>
+                </Pressable>
+
+                {/* Change Password (secondary action) */}
+                <Pressable
+                  onPress={() => router.push('/change-password')}
+                  style={({ pressed }) => [
+                    styles.secondaryButton,
+                    { borderColor: theme.border, backgroundColor: theme.surfaceSoft },
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <View style={styles.secondaryButtonContent}>
+                    <Ionicons name="lock-closed-outline" size={20} color={theme.secondaryText} />
+                    <Text style={[styles.secondaryButtonText, { color: theme.secondaryText }]}>Change Password</Text>
+                  </View>
+                </Pressable>
+
+                {message ? (
+                  <View
+                    style={[
+                      styles.messageBox,
+                      messageType === 'error' ? styles.messageError : styles.messageSuccess,
+                    ]}
+                  >
+                    <Ionicons
+                      name={messageType === 'error' ? 'warning-outline' : 'checkmark-circle-outline'}
+                      size={16}
+                      color={messageType === 'error' ? '#B45309' : COLORS.accentDark}
+                    />
+                    <Text
+                      style={[
+                        styles.messageText,
+                        messageType === 'error' ? styles.messageTextError : styles.messageTextSuccess,
+                      ]}
+                    >
+                      {message}
+                    </Text>
+                  </View>
+                ) : null}
+
+                {/* Subtle Delete Link */}
+                <Pressable onPress={handleDeleteAccount} style={styles.deleteLink}>
+                  <View style={styles.deleteLinkContent}>
+                    <FontAwesome name="trash" size={16} color={theme.destructiveIcon} />
+                    <Text style={[styles.deleteLinkText, { color: theme.destructiveText }]}>Delete Account</Text>
+                  </View>
+                </Pressable>
+              </View>
             </View>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </ScreenBackground>
     </>
   );
 }
@@ -368,6 +521,29 @@ const styles = StyleSheet.create({
   fieldBlock: {
     marginBottom: 18,
   },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 18,
+  },
+  toggleRowTextWrap: {
+    flex: 1,
+  },
+  toggleLabel: {
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  toggleSubtitle: {
+    fontSize: 12,
+    lineHeight: 16,
+  },
   fieldLabel: {
     fontSize: 13,
     fontWeight: '700',
@@ -404,7 +580,6 @@ const styles = StyleSheet.create({
   },
   inputFocused: {
     borderColor: COLORS.accent,
-    backgroundColor: '#FFFFFF',
     shadowColor: COLORS.accent,
     shadowOpacity: 0.12,
     shadowOffset: { width: 0, height: 4 },
@@ -412,8 +587,8 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   saveButton: {
-    height: 52,
-    borderRadius: 999,
+    height: 56,
+    borderRadius: 16,
     backgroundColor: COLORS.accent,
     alignItems: 'center',
     justifyContent: 'center',
@@ -467,50 +642,26 @@ const styles = StyleSheet.create({
   pressed: {
     transform: [{ scale: 0.98 }],
   },
-  changePasswordButton: {
+  secondaryButton: {
     marginTop: 12,
-    height: 44,
-    borderRadius: 12,
+    height: 56,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#374151',
-    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: 16,
   },
-  changePasswordContent: {
+  secondaryButtonContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
   },
-  changePasswordText: {
-    color: '#374151',
+  secondaryButtonText: {
     fontWeight: '700',
-    marginLeft: 6,
-  },
-  logoutOutlineButton: {
-    marginTop: 10,
-    height: 44,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.accentDark,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-  },
-  logoutOutlineContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  logoutOutlineText: {
-    color: COLORS.accentDark,
-    fontWeight: '700',
-    marginLeft: 6,
+    fontSize: 14,
   },
   deleteLink: {
-    marginTop: 14,
+    marginTop: 22,
     alignSelf: 'center',
     paddingVertical: 6,
   },
