@@ -14,6 +14,7 @@ type Recipe = {
   title: string;
   calories: number | string;
   image?: string;
+  source_url?: string | null;
 };
 
 type GroceryItem = {
@@ -231,7 +232,7 @@ export default function HomeScreen() {
                   activeOpacity={0.9}
                   onPress={() =>
                     router.push({
-                      pathname: '/(tabs)/cookbook/recipe-details',
+                      pathname: `/recipe/${featuredRecipe.id}`,
                       params: { recipe: JSON.stringify(featuredRecipe) },
                     })
                   }
@@ -311,7 +312,7 @@ export default function HomeScreen() {
                     activeOpacity={0.9}
                     onPress={() =>
                       router.push({
-                        pathname: '/(tabs)/cookbook/recipe-details',
+                        pathname: `/recipe/${recipe.id}`,
                         params: { recipe: JSON.stringify(recipe) },
                       })
                     }

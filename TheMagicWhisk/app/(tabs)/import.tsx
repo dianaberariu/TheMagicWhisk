@@ -1,10 +1,12 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useFocusEffect, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import ScreenBackground from '../../components/ScreenBackground';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { useCookbookContext } from '../../CookbookContext';
 import { useThemeContext } from '../../context/ThemeContext';
+import { supabase } from '../../supabase';
 
 const COLORS = {
   background: '#FFFFFF',
@@ -17,6 +19,13 @@ const COLORS = {
 
 const CATEGORIES = ['Breakfast', 'Lunch', 'Dinner', 'Sweets'] as const;
 type Category = (typeof CATEGORIES)[number];
+type CategoryValue = Category | string;
+
+type CustomCategory = {
+  id: string;
+  user_id: string;
+  name: string;
+};
 
 const SUPPORTED_DOMAINS = ['tiktok.com', 'instagram.com', 'youtube.com', 'youtu.be'];
 
@@ -46,16 +55,172 @@ export default function ImportScreen() {
   const router = useRouter();
   const { addRecipe } = useCookbookContext();
   const { isDarkMode } = useThemeContext();
-  const [selectedCategory, setSelectedCategory] = useState<Category>('Lunch');
+  const [selectedCategory, setSelectedCategory] = useState<CategoryValue>('Lunch');
+  const [customCategories, setCustomCategories] = useState<CustomCategory[]>([]);
+  const [isCategoryModalVisible, setIsCategoryModalVisible] = useState(false);
+  const [newCustomCategory, setNewCustomCategory] = useState('');
+  const [customCategoryError, setCustomCategoryError] = useState<string | null>(null);
+  const [isSavingCustomCategory, setIsSavingCustomCategory] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [urlInput, setUrlInput] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const isDefaultCategory = (value: string): value is Category => CATEGORIES.includes(value as Category);
+  const isCustomCategorySelected = selectedCategory.length > 0 && !isDefaultCategory(selectedCategory);
+
+  const tagColors = {
+    label: isDarkMode ? '#9CA3AF' : COLORS.muted,
+    pillBackground: isDarkMode ? '#111827' : '#FFFFFF',
+    pillBorder: isDarkMode ? '#1F2937' : COLORS.border,
+    text: isDarkMode ? '#E5E7EB' : COLORS.text,
+    addText: isDarkMode ? '#A7F3D0' : COLORS.primary,
+  };
+
+  const menuColors = {
+    text: isDarkMode ? '#F8FAFC' : '#0F172A',
+    muted: isDarkMode ? '#94A3B8' : '#64748B',
+    border: isDarkMode ? 'rgba(148, 163, 184, 0.25)' : 'rgba(148, 163, 184, 0.35)',
+    input: isDarkMode ? 'rgba(15, 23, 42, 0.65)' : 'rgba(255, 255, 255, 0.8)',
+  };
 
   useFocusEffect(
     useCallback(() => {
       setUrlInput('');
     }, [])
   );
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadCustomCategories = async () => {
+      try {
+        const { data: userData, error: userError } = await supabase.auth.getUser();
+        if (userError) {
+          console.error('Failed to load custom categories user', userError);
+          return;
+        }
+
+        if (!userData?.user) {
+          if (isMounted) {
+            setCustomCategories([]);
+          }
+          return;
+        }
+
+        const { data, error } = await supabase
+          .from('custom_categories')
+          .select('id, user_id, name')
+          .eq('user_id', userData.user.id)
+          .order('name', { ascending: true });
+
+        if (error) {
+          console.error('Failed to fetch custom categories', error);
+          return;
+        }
+
+        if (isMounted) {
+          setCustomCategories(data ?? []);
+        }
+      } catch (error) {
+        console.error('Failed to fetch custom categories', error);
+      }
+    };
+
+    loadCustomCategories();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const closeCategoryModal = () => {
+    setIsCategoryModalVisible(false);
+    setNewCustomCategory('');
+    setCustomCategoryError(null);
+    setIsSavingCustomCategory(false);
+  };
+
+  const openCategoryModal = () => {
+    setCustomCategoryError(null);
+    setIsCategoryModalVisible(true);
+  };
+
+  const handleAddCustomCategory = async () => {
+    const trimmedName = newCustomCategory.trim();
+
+    if (!trimmedName) {
+      setCustomCategoryError('Enter a category name.');
+      return;
+    }
+
+    if (isDefaultCategory(trimmedName)) {
+      setSelectedCategory(trimmedName);
+      closeCategoryModal();
+      return;
+    }
+
+    const existing = customCategories.find(
+      (category) => category.name.toLowerCase() === trimmedName.toLowerCase()
+    );
+
+    if (existing) {
+      setSelectedCategory(existing.name);
+      closeCategoryModal();
+      return;
+    }
+
+    setIsSavingCustomCategory(true);
+    setCustomCategoryError(null);
+
+    try {
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      if (userError) {
+        console.error('Failed to read user for custom category', userError);
+        setCustomCategoryError('Please sign in to save custom categories.');
+        return;
+      }
+
+      if (!userData?.user) {
+        console.error('No authenticated user for custom category');
+        setCustomCategoryError('Please sign in to save custom categories.');
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('custom_categories')
+        .insert({ user_id: userData.user.id, name: trimmedName })
+        .select('id, user_id, name')
+        .single();
+
+      if (error) {
+        console.error('Failed to add custom category', error);
+        setCustomCategoryError(error.message || 'Could not add category. Try again.');
+        return;
+      }
+
+      if (data) {
+        setCustomCategories((current) =>
+          [...current, data].sort((left, right) => left.name.localeCompare(right.name))
+        );
+        setSelectedCategory(data.name);
+      } else {
+        setCustomCategoryError('Could not add category. Try again.');
+        return;
+      }
+
+      closeCategoryModal();
+    } catch (error) {
+      console.error('Failed to add custom category', error);
+      setCustomCategoryError('Could not add category. Try again.');
+    } finally {
+      setIsSavingCustomCategory(false);
+    }
+  };
+
+  const handleSelectCustomCategory = (name: string) => {
+    setSelectedCategory(name);
+    closeCategoryModal();
+  };
 
   const handleExtract = async () => {
     if (isLoading) {
@@ -109,7 +274,7 @@ export default function ImportScreen() {
 
         const completeRecipe = {
           id: Date.now().toString(),
-          category: selectedCategory,
+          category: isDefaultCategory(selectedCategory) ? selectedCategory : undefined,
           title: localizedData.title,
           ingredients: localizedData.ingredients,
           instructions: localizedData.instructions,
@@ -121,14 +286,25 @@ export default function ImportScreen() {
           },
           servings: localizedData.servings || 1,
           image: normalizedImage,
+          source_url: trimmedUrl,
           languages: recipeData.languages,
         };
 
-        await addRecipe(completeRecipe);
+        const { data: insertedRecipe, error: insertError } = await addRecipe(completeRecipe);
+
+        if (insertError || !insertedRecipe) {
+          setErrorMessage('Could not save the recipe. Please try again.');
+          return;
+        }
+
+        closeCategoryModal();
         setUrlInput('');
+        setErrorMessage(null);
+        setCustomCategoryError(null);
+
         router.push({
-          pathname: '/(tabs)/cookbook/recipe-details',
-          params: { recipe: JSON.stringify(completeRecipe) },
+          pathname: '/recipe/[id]',
+          params: { id: insertedRecipe.id, recipe: JSON.stringify(insertedRecipe) },
         });
       }
     } catch (error) {
@@ -164,7 +340,7 @@ export default function ImportScreen() {
         />
         {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
         <View style={styles.categorySection}>
-          <Text style={styles.categoryLabel}>Save as:</Text>
+          <Text style={[styles.categoryLabel, { color: tagColors.label }]}>Save as:</Text>
           <View style={styles.categoryRow}>
             {CATEGORIES.map((category) => {
               const isActive = category === selectedCategory;
@@ -172,14 +348,50 @@ export default function ImportScreen() {
                 <Pressable
                   key={category}
                   onPress={() => setSelectedCategory(category)}
-                  style={[styles.categoryPill, isActive && styles.categoryPillActive]}
+                  style={[
+                    styles.categoryPill,
+                    { backgroundColor: tagColors.pillBackground, borderColor: tagColors.pillBorder },
+                    isActive && styles.categoryPillActive,
+                  ]}
                 >
-                  <Text style={[styles.categoryText, isActive && styles.categoryTextActive]}>
+                  <Text
+                    style={[
+                      styles.categoryText,
+                      { color: tagColors.text },
+                      isActive && styles.categoryTextActive,
+                    ]}
+                  >
                     {category}
                   </Text>
                 </Pressable>
               );
             })}
+            {isCustomCategorySelected && (
+              <Pressable
+                onPress={() => setSelectedCategory(selectedCategory)}
+                style={[
+                  styles.categoryPill,
+                  { backgroundColor: tagColors.pillBackground, borderColor: tagColors.pillBorder },
+                  styles.categoryPillActive,
+                ]}
+              >
+                <Text style={[styles.categoryText, { color: tagColors.text }, styles.categoryTextActive]}>
+                  {selectedCategory}
+                </Text>
+              </Pressable>
+            )}
+            <Pressable
+              onPress={openCategoryModal}
+              style={[
+                styles.categoryPill,
+                { backgroundColor: 'transparent', borderColor: tagColors.pillBorder },
+                styles.categoryPillAdd,
+              ]}
+            >
+              <Text style={[styles.categoryText, styles.categoryTextAdd, { color: tagColors.addText }]}>
+                + Custom
+              </Text>
+            </Pressable>
           </View>
         </View>
         <Pressable
@@ -197,6 +409,107 @@ export default function ImportScreen() {
           </View>
         </Pressable>
       </View>
+      <Modal
+        animationType="slide"
+        transparent
+        visible={isCategoryModalVisible}
+        onRequestClose={closeCategoryModal}
+      >
+        <View style={styles.menuRoot}>
+          <Pressable
+            style={[
+              StyleSheet.absoluteFillObject,
+              styles.menuBackdrop,
+              {
+                backgroundColor: isDarkMode
+                  ? 'rgba(2, 6, 23, 0.12)'
+                  : 'rgba(15, 23, 42, 0.04)',
+              },
+            ]}
+            onPress={closeCategoryModal}
+          />
+          <View
+            style={[
+              styles.menuBox,
+              {
+                backgroundColor: isDarkMode ? 'rgba(15, 23, 42, 0.88)' : 'rgba(255, 255, 255, 0.92)',
+                borderColor: menuColors.border,
+              },
+            ]}
+          >
+            <View style={styles.menuInputRow}>
+              <TextInput
+                placeholder="Add a new category"
+                placeholderTextColor={menuColors.muted}
+                value={newCustomCategory}
+                onChangeText={(value) => {
+                  setNewCustomCategory(value);
+                  if (customCategoryError) {
+                    setCustomCategoryError(null);
+                  }
+                }}
+                style={[
+                  styles.menuInput,
+                  { backgroundColor: menuColors.input, borderColor: menuColors.border, color: menuColors.text },
+                ]}
+              />
+              <Pressable
+                style={[styles.menuAddButton, isSavingCustomCategory && styles.menuAddButtonDisabled]}
+                onPress={handleAddCustomCategory}
+                disabled={isSavingCustomCategory}
+              >
+                {isSavingCustomCategory ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.menuAddText}>Add</Text>
+                )}
+              </Pressable>
+            </View>
+            {customCategoryError ? <Text style={styles.menuErrorText}>{customCategoryError}</Text> : null}
+            <ScrollView style={styles.menuList} contentContainerStyle={styles.menuListContent}>
+              {customCategories.length === 0 ? (
+                <Text style={[styles.menuEmptyText, { color: menuColors.muted }]}>No custom categories yet.</Text>
+              ) : (
+                customCategories.map((category, index) => {
+                  const isSelected = category.name === selectedCategory;
+                  const isLast = index === customCategories.length - 1;
+                  const iconColor = isSelected
+                    ? '#FFFFFF'
+                    : isDarkMode
+                      ? '#E2E8F0'
+                      : '#0F172A';
+                  return (
+                    <Pressable
+                      key={category.id}
+                      style={[
+                        styles.menuItem,
+                        {
+                          borderBottomColor: menuColors.border,
+                          borderBottomWidth: isLast ? 0 : StyleSheet.hairlineWidth,
+                          backgroundColor: isSelected
+                            ? isDarkMode
+                              ? 'rgba(101, 184, 145, 0.2)'
+                              : 'rgba(101, 184, 145, 0.12)'
+                            : 'transparent',
+                        },
+                      ]}
+                      onPress={() => handleSelectCustomCategory(category.name)}
+                    >
+                      <Ionicons
+                        name={isSelected ? 'checkmark-circle' : 'pricetag-outline'}
+                        size={16}
+                        color={iconColor}
+                        style={styles.menuIcon}
+                      />
+                      <Text style={[styles.menuItemText, { color: iconColor }]}>{category.name}</Text>
+                    </Pressable>
+                  );
+                })
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </ScreenBackground>
   );
 }
@@ -248,6 +561,8 @@ const styles = StyleSheet.create({
   },
   categoryRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
   },
   categoryPill: {
     paddingVertical: 8,
@@ -257,10 +572,15 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     backgroundColor: '#FFFFFF',
     marginRight: 10,
+    marginBottom: 10,
   },
   categoryPillActive: {
     backgroundColor: COLORS.primary,
     borderColor: COLORS.primary,
+  },
+  categoryPillAdd: {
+    borderStyle: 'dashed',
+    backgroundColor: 'transparent',
   },
   categoryText: {
     fontSize: 13,
@@ -269,6 +589,9 @@ const styles = StyleSheet.create({
   },
   categoryTextActive: {
     color: '#FFFFFF',
+  },
+  categoryTextAdd: {
+    color: COLORS.primary,
   },
   button: {
     height: 56,
@@ -291,5 +614,90 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  menuRoot: {
+    flex: 1,
+  },
+  menuBackdrop: {
+    backgroundColor: 'transparent',
+  },
+  menuBox: {
+    position: 'absolute',
+    top: 220,
+    right: 24,
+    width: 200,
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    maxHeight: 360,
+    shadowColor: '#000000',
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 5,
+  },
+  menuInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
+  },
+  menuInput: {
+    flex: 1,
+    height: 36,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    fontSize: 12,
+  },
+  menuAddButton: {
+    height: 36,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
+  },
+  menuAddButtonDisabled: {
+    opacity: 0.7,
+  },
+  menuAddText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  menuErrorText: {
+    marginTop: -4,
+    marginBottom: 8,
+    fontSize: 12,
+    lineHeight: 16,
+    color: '#E11D48',
+    fontWeight: '600',
+  },
+  menuList: {
+    maxHeight: 240,
+  },
+  menuListContent: {
+    paddingVertical: 2,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+  },
+  menuIcon: {
+    marginRight: 10,
+  },
+  menuItemText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  menuEmptyText: {
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
+    paddingVertical: 12,
   },
 });

@@ -94,6 +94,7 @@ const uploadRecipeImage = async (imageUrl, recipeId) => {
 * @property {RecipeMacros} [macros]
 * @property {string | number | undefined} [calories]
 * @property {string | undefined} [image]
+ * @property {string | null | undefined} [source_url]
 * @property {RecipeIngredient[]} [ingredients]
 * @property {string[]} [steps]
 * @property {string[]} [instructions]
@@ -103,7 +104,7 @@ const uploadRecipeImage = async (imageUrl, recipeId) => {
 /**
 * @typedef {Object} CookbookContextValue
 * @property {Recipe[]} recipes
-* @property {(recipe: Recipe) => void} addRecipe
+* @property {(recipe: Recipe) => Promise<{ data: Recipe | null, error: any | null }>} addRecipe
 * @property {(recipeId: string) => void} deleteRecipe
 * @property {(recipeId: string, category: string) => void} updateRecipeCategory
 * @property {(recipe: Recipe) => void} updateRecipe
@@ -146,18 +147,29 @@ fetchRecipes();
 
 const addRecipe = useCallback(async (newRecipe) => {
 if (!newRecipe) {
-return;
+return { data: null, error: null };
 }
 
 const recipeWithOwner = user?.id ? { ...newRecipe, user_id: user.id } : newRecipe;
 
-setRecipes((prev) => [recipeWithOwner, ...prev]);
-
-const { error } = await supabase.from('recipes').insert(recipeWithOwner);
+const { data, error } = await supabase
+.from('recipes')
+.insert(recipeWithOwner)
+.select('*')
+.single();
 
 if (error) {
 console.error('Failed to add recipe', error);
+return { data: null, error };
 }
+
+if (data) {
+setRecipes((prev) => [data, ...prev]);
+return { data, error: null };
+}
+
+console.error('Failed to add recipe: no data returned');
+return { data: null, error: new Error('No data returned from insert.') };
 }, [user]);
 
 const updateRecipeCategory = useCallback(async (recipeId, category) => {

@@ -1,13 +1,13 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Alert, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
-import { useGroceryContext } from '../../../GroceryContext';
-import { useCookbookContext } from '../../../CookbookContext';
-import { useThemeContext } from '../../../context/ThemeContext';
-import { supabase } from '../../../supabase';
+import { useGroceryContext } from '../../GroceryContext';
+import { useCookbookContext } from '../../CookbookContext';
+import { useThemeContext } from '../../context/ThemeContext';
+import { supabase } from '../../supabase';
 
 type Macro = {
   calories?: number | string;
@@ -35,7 +35,7 @@ type Category = 'Breakfast' | 'Lunch' | 'Dinner' | 'Sweets';
 
 type Recipe = {
   id: string;
-  category?: Category;
+  category?: Category | string;
   title?: string;
   servings?: number;
   calories?: number | string;
@@ -44,6 +44,7 @@ type Recipe = {
   steps?: string[];
   instructions?: string[];
   image?: string;
+  source_url?: string | null;
   languages?: {
     en?: LocalizedRecipe;
     ro?: LocalizedRecipe;
@@ -115,17 +116,34 @@ function parseRecipe(param: string | string[] | undefined): Recipe {
 export default function RecipeDetailsScreen() {
   const router = useRouter();
   const { isDarkMode } = useThemeContext();
-  const params = useLocalSearchParams<{ recipe?: string }>();
-  const baselineRecipe = useMemo(() => parseRecipe(params.recipe), [params.recipe]);
-  const parsedRecipe = baselineRecipe;
+  const params = useLocalSearchParams<{ id?: string; recipe?: string }>();
+  const recipeId = useMemo(() => {
+    const raw = params.id;
+    return Array.isArray(raw) ? raw[0] : raw;
+  }, [params.id]);
+  const parsedRecipe = useMemo(() => parseRecipe(params.recipe), [params.recipe]);
   const { addToGroceryList } = useGroceryContext() as GroceryContextValue;
-  const { recipes, updateRecipeCategory, deleteRecipe, updateRecipe } = useCookbookContext();
-  const recipe =
-    recipes.find((item) => item.id === parsedRecipe.id) ?? parsedRecipe;
-  const [currentCategory, setCurrentCategory] = useState<Category>(
-    (recipe.category as Category) ?? 'Breakfast'
+  const { recipes, deleteRecipe, updateRecipe } = useCookbookContext();
+  const storedRecipe = recipes.find((item) => item.id === (recipeId ?? parsedRecipe.id));
+  const recipe = storedRecipe ?? parsedRecipe;
+  const baselineRecipe = storedRecipe ?? parsedRecipe;
+  const isFallbackRecipe = recipe.id === FALLBACK_RECIPE.id;
+  const [currentCategory, setCurrentCategory] = useState<string>(
+    (recipe.category as Category | string) ?? 'Breakfast'
   );
+  const [customCategories, setCustomCategories] = useState<string[]>([]);
+  const [isCustomMenuVisible, setIsCustomMenuVisible] = useState(false);
+  const [newCustomCategory, setNewCustomCategory] = useState('');
   const [lang, setLang] = useState<'en' | 'ro'>('en');
+  const [sourceOpenError, setSourceOpenError] = useState<string | null>(null);
+  const isDefaultCategory = (value: string): value is Category => CATEGORIES.includes(value as Category);
+  const isCustomCategory = currentCategory.length > 0 && !isDefaultCategory(currentCategory);
+  const menuColors = {
+    text: isDarkMode ? '#F8FAFC' : '#0F172A',
+    muted: isDarkMode ? '#94A3B8' : '#64748B',
+    border: isDarkMode ? 'rgba(148, 163, 184, 0.25)' : 'rgba(148, 163, 184, 0.35)',
+    input: isDarkMode ? 'rgba(15, 23, 42, 0.65)' : 'rgba(255, 255, 255, 0.8)',
+  };
 
   const localizedRecipe =
     recipe.languages?.[lang] ?? recipe.languages?.en ?? recipe.languages?.ro ?? recipe;
@@ -144,6 +162,8 @@ export default function RecipeDetailsScreen() {
   const proteinRaw = localizedMacros?.protein ?? 'N/A';
   const carbsRaw = localizedMacros?.carbs ?? 'N/A';
   const fatsRaw = localizedMacros?.fats ?? localizedMacros?.fat ?? 'N/A';
+  const sourceUrl = typeof recipe.source_url === 'string' ? recipe.source_url.trim() : '';
+  const hasSourceUrl = sourceUrl.length > 0;
   const palette = isDarkMode
     ? {
         background: '#121212',
@@ -167,10 +187,68 @@ export default function RecipeDetailsScreen() {
       };
 
   const [imageUri, setImageUri] = useState<string | null>(null);
+  const lastSyncedRef = useRef<{ id: string | null; servings: number | null; title: string | null }>(
+    { id: null, servings: null, title: null }
+  );
 
   useEffect(() => {
     setTargetServings(baselineServings);
   }, [recipe.id, lang, baselineServings]);
+
+  useEffect(() => {
+    setSourceOpenError(null);
+  }, [recipe.id]);
+
+  useEffect(() => {
+    setCurrentCategory((recipe.category as string | undefined) ?? 'Breakfast');
+  }, [recipe.category, recipe.id]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadCustomCategories = async () => {
+      try {
+        const { data: userData, error: userError } = await supabase.auth.getUser();
+        if (userError) {
+          console.error('Failed to load custom categories user', userError);
+          return;
+        }
+
+        if (!userData?.user) {
+          if (isMounted) {
+            setCustomCategories([]);
+          }
+          return;
+        }
+
+        const { data, error } = await supabase
+          .from('custom_categories')
+          .select('name')
+          .eq('user_id', userData.user.id)
+          .order('name', { ascending: true });
+
+        if (error) {
+          console.error('Failed to fetch custom categories', error);
+          return;
+        }
+
+        if (isMounted) {
+          const names = (data ?? [])
+            .map((item) => (typeof item?.name === 'string' ? item.name : ''))
+            .filter(Boolean);
+          setCustomCategories(names);
+        }
+      } catch (error) {
+        console.error('Failed to fetch custom categories', error);
+      }
+    };
+
+    loadCustomCategories();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!recipe.image) {
@@ -180,12 +258,11 @@ export default function RecipeDetailsScreen() {
 
     if (recipe.image.startsWith('http')) {
       setImageUri(recipe.image);
-    } 
-    else {
+    } else {
       const { data } = supabase.storage
         .from(SUPABASE_IMAGE_BUCKET)
         .getPublicUrl(recipe.image);
-      
+
       setImageUri(data.publicUrl);
     }
   }, [recipe.image]);
@@ -300,12 +377,120 @@ export default function RecipeDetailsScreen() {
     return amount.replace(match[0], formatQuantity(scaledValue));
   };
 
-  const scaledIngredients = baselineIngredients.map((ingredient) => ({
-    ...ingredient,
-    amount: scaleAmount(ingredient.amount),
-  }));
+  const scaledIngredients = useMemo(
+    () =>
+      baselineIngredients.map((ingredient) => ({
+        ...ingredient,
+        amount: scaleAmount(ingredient.amount),
+      })),
+    [baselineIngredients, baselineRecipe.servings, normalizedTargetServings]
+  );
+
+  const handleCategorySelect = async (category: string, options?: { closeMenu?: boolean }) => {
+    if (!recipe?.id) {
+      return;
+    }
+
+    setCurrentCategory(category);
+
+    if (options?.closeMenu) {
+      setIsCustomMenuVisible(false);
+    }
+
+    try {
+      const { error } = await supabase
+        .from('recipes')
+        .update({ category })
+        .eq('id', recipe.id);
+
+      if (error) {
+        console.error('Failed to update recipe category', error);
+      }
+    } catch (error) {
+      console.error('Failed to update recipe category', error);
+    }
+  };
+
+  const handleAddCustomCategory = async () => {
+    const trimmedName = newCustomCategory.trim();
+
+    if (!trimmedName || !recipe?.id) {
+      return;
+    }
+
+    const existing = customCategories.find(
+      (category) => category.toLowerCase() === trimmedName.toLowerCase()
+    );
+
+    if (existing) {
+      await handleCategorySelect(existing, { closeMenu: true });
+      setNewCustomCategory('');
+      return;
+    }
+
+    try {
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      if (userError) {
+        console.error('Failed to read user for custom category', userError);
+        return;
+      }
+
+      if (!userData?.user) {
+        console.error('No authenticated user for custom category');
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('custom_categories')
+        .insert({ user_id: userData.user.id, name: trimmedName })
+        .select('name')
+        .single();
+
+      if (error) {
+        console.error('Failed to add custom category', error);
+        return;
+      }
+
+      const nextName = data?.name ?? trimmedName;
+
+      setCustomCategories((prev) => {
+        const next = [...prev, nextName]
+          .map((category) => category.trim())
+          .filter(Boolean);
+        next.sort((left, right) => left.localeCompare(right));
+        return Array.from(new Set(next));
+      });
+
+      setCurrentCategory(nextName);
+
+      const { error: updateError } = await supabase
+        .from('recipes')
+        .update({ category: nextName })
+        .eq('id', recipe.id);
+
+      if (updateError) {
+        console.error('Failed to update recipe category', updateError);
+      }
+
+      setNewCustomCategory('');
+      setIsCustomMenuVisible(false);
+    } catch (error) {
+      console.error('Failed to add custom category', error);
+    }
+  };
 
   useEffect(() => {
+    if (isFallbackRecipe) {
+      return;
+    }
+
+    const currentId = recipe.id;
+    const lastSynced = lastSyncedRef.current;
+
+    if (lastSynced.id === currentId && lastSynced.servings === normalizedTargetServings && lastSynced.title === safeTitle) {
+      return;
+    }
+
     const updatedRecipe = {
       ...baselineRecipe,
       title: safeTitle,
@@ -313,8 +498,14 @@ export default function RecipeDetailsScreen() {
       ingredients: scaledIngredients,
     };
 
+    lastSyncedRef.current = {
+      id: currentId,
+      servings: normalizedTargetServings,
+      title: safeTitle,
+    };
+
     updateRecipe(updatedRecipe);
-  }, [normalizedTargetServings, baselineRecipe, scaledIngredients, updateRecipe]);
+  }, [baselineRecipe, isFallbackRecipe, normalizedTargetServings, recipe.id, safeTitle, scaledIngredients, updateRecipe]);
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: palette.background }]} edges={['top']}>
@@ -410,13 +601,45 @@ export default function RecipeDetailsScreen() {
                 })}
               </View>
             </View>
-            <View style={[styles.caloriePill, { backgroundColor: isDarkMode ? '#1A1A1A' : '#EAF6F0', borderColor: isDarkMode ? '#404040' : 'transparent', borderWidth: isDarkMode ? 1 : 0 }]}>
-              <Text style={[styles.calorieText, { color: isDarkMode ? '#FFFFFF' : '#65B891', fontWeight: '800', opacity: isDarkMode ? 1 : 1 }]}>{safeCalories} kcal / serving</Text>
+            <View
+              style={[
+                styles.caloriePill,
+                {
+                  backgroundColor: isDarkMode ? '#1A1A1A' : '#EAF6F0',
+                  borderColor: isDarkMode ? '#404040' : 'transparent',
+                  borderWidth: isDarkMode ? 1 : 0,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.calorieText,
+                  { color: isDarkMode ? '#FFFFFF' : '#65B891', fontWeight: '800', opacity: isDarkMode ? 1 : 1 },
+                ]}
+              >
+                {safeCalories} kcal / serving
+              </Text>
             </View>
           </View>
           <View style={styles.statsMetaColumn}>
-            <View style={[styles.servingsCounter, { backgroundColor: isDarkMode ? '#1A1A1A' : '#E8F5EE', borderColor: isDarkMode ? '#404040' : 'transparent', borderWidth: isDarkMode ? 1 : 0 }]}>
-              <Text style={[styles.servingsLabel, { color: isDarkMode ? '#FFFFFF' : '#65B891', fontWeight: '800', opacity: isDarkMode ? 1 : 1 }]}>Servings</Text>
+            <View
+              style={[
+                styles.servingsCounter,
+                {
+                  backgroundColor: isDarkMode ? '#1A1A1A' : '#E8F5EE',
+                  borderColor: isDarkMode ? '#404040' : 'transparent',
+                  borderWidth: isDarkMode ? 1 : 0,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.servingsLabel,
+                  { color: isDarkMode ? '#FFFFFF' : '#65B891', fontWeight: '800', opacity: isDarkMode ? 1 : 1 },
+                ]}
+              >
+                Servings
+              </Text>
               <View style={styles.servingsControls}>
                 <TouchableOpacity
                   style={[
@@ -443,7 +666,9 @@ export default function RecipeDetailsScreen() {
                     color={normalizedTargetServings <= 1 ? palette.muted : '#65B891'}
                   />
                 </TouchableOpacity>
-                <Text style={[styles.servingsValue, { color: isDarkMode ? '#FFFFFF' : '#65B891' }]}>{normalizedTargetServings}</Text>
+                <Text style={[styles.servingsValue, { color: isDarkMode ? '#FFFFFF' : '#65B891' }]}>
+                  {normalizedTargetServings}
+                </Text>
                 <TouchableOpacity
                   style={[
                     styles.servingsControl,
@@ -472,9 +697,43 @@ export default function RecipeDetailsScreen() {
           {safeTitle}
         </Text>
 
+        {hasSourceUrl ? (
+          <View style={styles.sourceLinkSection}>
+            <TouchableOpacity
+              style={[
+                styles.sourceLinkButton,
+                {
+                  borderColor: palette.border,
+                  backgroundColor: palette.surface,
+                },
+              ]}
+              activeOpacity={0.9}
+              onPress={async () => {
+                try {
+                  setSourceOpenError(null);
+                  await Linking.openURL(sourceUrl);
+                } catch (err) {
+                  console.error('Failed to open source URL', err);
+                  setSourceOpenError('Unable to open this link on your device.');
+                }
+              }}
+            >
+              <Ionicons name="play-circle-outline" size={20} color={palette.text} />
+              <Text style={[styles.sourceLinkText, { color: palette.text }]}>Watch Original Video</Text>
+            </TouchableOpacity>
+            {sourceOpenError ? (
+              <Text style={[styles.sourceLinkError, { color: palette.muted }]}>{sourceOpenError}</Text>
+            ) : null}
+          </View>
+        ) : null}
+
         <View style={styles.categorySection}>
           <Text style={[styles.categoryLabel, { color: palette.muted }]}>Category</Text>
-          <View style={styles.categoryRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.categoryRow}
+          >
             {CATEGORIES.map((category) => {
               const isActive = category === currentCategory;
               return (
@@ -488,11 +747,7 @@ export default function RecipeDetailsScreen() {
                     },
                   ]}
                   activeOpacity={0.8}
-                  onPress={() => {
-                    setCurrentCategory(category as Category);
-                    updateRecipeCategory(recipe.id, category);
-                    Alert.alert('Updated', 'Recipe category changed!');
-                  }}
+                  onPress={() => handleCategorySelect(category)}
                 >
                   <Text style={[styles.categoryText, { color: isActive ? '#FFFFFF' : palette.text }]}>
                     {category}
@@ -500,7 +755,31 @@ export default function RecipeDetailsScreen() {
                 </TouchableOpacity>
               );
             })}
-          </View>
+            {isCustomCategory && (
+              <TouchableOpacity
+                key="active-custom-category"
+                style={[
+                  styles.categoryPill,
+                  { backgroundColor: '#65B891', borderColor: '#65B891' },
+                ]}
+                activeOpacity={0.8}
+                onPress={() => handleCategorySelect(currentCategory)}
+              >
+                <Text style={[styles.categoryText, { color: '#FFFFFF' }]}>{currentCategory}</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              key="custom-category"
+              style={[
+                styles.categoryPill,
+                { backgroundColor: palette.surface, borderColor: palette.pillBorder },
+              ]}
+              activeOpacity={0.8}
+              onPress={() => setIsCustomMenuVisible(true)}
+            >
+              <Text style={[styles.categoryText, { color: palette.text }]}>+ Custom</Text>
+            </TouchableOpacity>
+          </ScrollView>
         </View>
 
         <View style={styles.section}>
@@ -550,6 +829,95 @@ export default function RecipeDetailsScreen() {
           ))}
         </View>
       </ScrollView>
+      <Modal
+        animationType="fade"
+        transparent
+        visible={isCustomMenuVisible}
+        onRequestClose={() => setIsCustomMenuVisible(false)}
+      >
+        <View style={styles.menuRoot}>
+          <Pressable
+            style={[
+              StyleSheet.absoluteFillObject,
+              styles.menuBackdrop,
+              {
+                backgroundColor: isDarkMode
+                  ? 'rgba(2, 6, 23, 0.12)'
+                  : 'rgba(15, 23, 42, 0.04)',
+              },
+            ]}
+            onPress={() => setIsCustomMenuVisible(false)}
+          />
+          <View
+            style={[
+              styles.menuBox,
+              {
+                backgroundColor: isDarkMode ? 'rgba(15, 23, 42, 0.88)' : 'rgba(255, 255, 255, 0.92)',
+                borderColor: menuColors.border,
+              },
+            ]}
+          >
+            <View style={styles.menuInputRow}>
+              <TextInput
+                placeholder="Add a new category..."
+                placeholderTextColor={menuColors.muted}
+                value={newCustomCategory}
+                onChangeText={setNewCustomCategory}
+                style={[
+                  styles.menuInput,
+                  { backgroundColor: menuColors.input, borderColor: menuColors.border, color: menuColors.text },
+                ]}
+              />
+              <Pressable style={styles.menuAddButton} onPress={handleAddCustomCategory}>
+                <Text style={styles.menuAddText}>Add</Text>
+              </Pressable>
+            </View>
+            <ScrollView style={styles.menuList} contentContainerStyle={styles.menuListContent}>
+              {customCategories.length === 0 ? (
+                <Text style={[styles.menuEmptyText, { color: menuColors.muted }]}>
+                  No custom categories yet.
+                </Text>
+              ) : (
+                customCategories.map((category, index) => {
+                  const isSelected = category === currentCategory;
+                  const isLast = index === customCategories.length - 1;
+                  const iconColor = isSelected
+                    ? '#FFFFFF'
+                    : isDarkMode
+                      ? '#E2E8F0'
+                      : '#0F172A';
+                  return (
+                    <TouchableOpacity
+                      key={category}
+                      style={[
+                        styles.menuItem,
+                        {
+                          borderBottomColor: menuColors.border,
+                          borderBottomWidth: isLast ? 0 : StyleSheet.hairlineWidth,
+                          backgroundColor: isSelected
+                            ? isDarkMode
+                              ? 'rgba(101, 184, 145, 0.2)'
+                              : 'rgba(101, 184, 145, 0.12)'
+                            : 'transparent',
+                        },
+                      ]}
+                      onPress={() => handleCategorySelect(category, { closeMenu: true })}
+                    >
+                      <Ionicons
+                        name={isSelected ? 'checkmark-circle' : 'pricetag-outline'}
+                        size={16}
+                        color={iconColor}
+                        style={styles.menuIcon}
+                      />
+                      <Text style={[styles.menuItemText, { color: iconColor }]}>{category}</Text>
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
       <View style={styles.stickyButtonWrap}>
         <TouchableOpacity
           style={styles.primaryButton}
@@ -648,6 +1016,8 @@ const styles = StyleSheet.create({
   },
   categoryRow: {
     flexDirection: 'row',
+    alignItems: 'center',
+    paddingBottom: 4,
   },
   categoryPill: {
     paddingVertical: 8,
@@ -677,6 +1047,27 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '700',
     color: COLORS.text,
+  },
+  sourceLinkSection: {
+    alignItems: 'center',
+    marginBottom: 18,
+  },
+  sourceLinkButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    height: 44,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  sourceLinkText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  sourceLinkError: {
+    marginTop: 6,
+    fontSize: 12,
   },
   caloriePill: {
     backgroundColor: '#EAF6F0',
@@ -840,5 +1231,79 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  menuRoot: {
+    flex: 1,
+  },
+  menuBackdrop: {
+    backgroundColor: 'transparent',
+  },
+  menuBox: {
+    position: 'absolute',
+    top: 250,
+    right: 20,
+    width: 200,
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+    maxHeight: 360,
+    shadowColor: '#000000',
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 5,
+  },
+  menuInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
+  },
+  menuInput: {
+    flex: 1,
+    height: 36,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    fontSize: 12,
+  },
+  menuAddButton: {
+    height: 36,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#65B891',
+  },
+  menuAddText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  menuList: {
+    maxHeight: 280,
+  },
+  menuListContent: {
+    paddingVertical: 2,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+  },
+  menuIcon: {
+    marginRight: 10,
+  },
+  menuItemText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  menuEmptyText: {
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
+    paddingVertical: 12,
   },
 });

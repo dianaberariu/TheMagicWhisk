@@ -4,6 +4,8 @@ import { Ionicons } from '@expo/vector-icons';
 import ScreenBackground from '../../../components/ScreenBackground';
 import {
   Animated,
+  Modal,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -15,6 +17,7 @@ import { Swipeable } from 'react-native-gesture-handler';
 
 import { useCookbookContext } from '../../../CookbookContext';
 import { useThemeContext } from '../../../context/ThemeContext';
+import { supabase } from '../../../supabase';
 
 type Macro = {
   protein: number | string;
@@ -33,13 +36,14 @@ type Category = 'Breakfast' | 'Lunch' | 'Dinner' | 'Sweets';
 
 type Recipe = {
   id: string;
-  category: Category;
+  category?: Category | string;
   title: string;
   servings: number;
   calories: number | string;
   macros: Macro;
   ingredients: Ingredient[];
   steps: string[];
+  source_url?: string | null;
 };
 
 const COLORS = {
@@ -51,8 +55,7 @@ const COLORS = {
   primary: '#65B891',
 };
 
-const CATEGORIES = ['All', 'Breakfast', 'Lunch', 'Dinner', 'Sweets'] as const;
-type FilterCategory = (typeof CATEGORIES)[number];
+const DEFAULT_CATEGORIES = ['Breakfast', 'Lunch', 'Dinner', 'Sweets'] as const;
 
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -238,13 +241,24 @@ export default function CookbookList() {
   const router = useRouter();
   const { isDarkMode } = useThemeContext();
   const params = useLocalSearchParams<{ category?: string; query?: string }>();
-  const normalizedCategory = CATEGORIES.includes(params.category as FilterCategory)
-    ? (params.category as FilterCategory)
-    : 'All';
+  const [customCategories, setCustomCategories] = useState<string[]>([]);
+  const [isCustomMenuVisible, setIsCustomMenuVisible] = useState(false);
+  const availableCategories = useMemo(() => {
+    const normalized = [...DEFAULT_CATEGORIES, ...customCategories]
+      .map((category) => category.trim())
+      .filter(Boolean);
+    return ['All', ...Array.from(new Set(normalized))];
+  }, [customCategories]);
+  const normalizedCategory = useMemo(() => {
+    const candidate = typeof params.category === 'string' ? params.category : 'All';
+    return availableCategories.includes(candidate) ? candidate : 'All';
+  }, [availableCategories, params.category]);
   const normalizedQuery = typeof params.query === 'string' ? params.query : '';
   const { recipes, deleteRecipe } = useCookbookContext();
-  const [activeCategory, setActiveCategory] = useState<FilterCategory>(normalizedCategory);
+  const [selectedCategory, setSelectedCategory] = useState<string>(normalizedCategory);
   const [searchQuery, setSearchQuery] = useState(normalizedQuery);
+  const isDefaultCategory = (value: string): value is Category => DEFAULT_CATEGORIES.includes(value as Category);
+  const isCustomCategory = selectedCategory !== 'All' && !isDefaultCategory(selectedCategory);
   const palette = isDarkMode
     ? {
         surface: '#1A1A1A',
@@ -268,18 +282,64 @@ export default function CookbookList() {
       };
 
   useEffect(() => {
-    setActiveCategory(normalizedCategory);
+    setSelectedCategory(normalizedCategory);
   }, [normalizedCategory]);
 
   useEffect(() => {
     setSearchQuery(normalizedQuery);
   }, [normalizedQuery]);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadCustomCategories = async () => {
+      try {
+        const { data: userData, error: userError } = await supabase.auth.getUser();
+        if (userError) {
+          console.error('Failed to load custom categories user', userError);
+          return;
+        }
+
+        if (!userData?.user) {
+          if (isMounted) {
+            setCustomCategories([]);
+          }
+          return;
+        }
+
+        const { data, error } = await supabase
+          .from('custom_categories')
+          .select('name')
+          .eq('user_id', userData.user.id)
+          .order('name', { ascending: true });
+
+        if (error) {
+          console.error('Failed to fetch custom categories', error);
+          return;
+        }
+
+        if (isMounted) {
+          const names = (data ?? [])
+            .map((item) => (typeof item?.name === 'string' ? item.name : ''))
+            .filter(Boolean);
+          setCustomCategories(names);
+        }
+      } catch (error) {
+        console.error('Failed to fetch custom categories', error);
+      }
+    };
+
+    loadCustomCategories();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const filteredRecipes = useMemo(() => {
     const normalizedSearch = searchQuery.trim().toLowerCase();
     return (recipes as Recipe[]).filter((recipe) => {
-      const matchesCategory =
-        activeCategory === 'All' || recipe.category === activeCategory;
+      const matchesCategory = selectedCategory === 'All' || recipe.category === selectedCategory;
 
       if (!matchesCategory) {
         return false;
@@ -298,13 +358,13 @@ export default function CookbookList() {
 
       return Boolean(inTitle || inIngredients);
     });
-  }, [activeCategory, recipes, searchQuery]);
+  }, [recipes, searchQuery, selectedCategory]);
 
   return (
     <ScreenBackground>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <Text style={[styles.title, { color: palette.text }]}>Your Cookbook</Text>
-        <View style={[styles.searchBar, { backgroundColor: palette.surface, borderColor: palette.border }] }>
+        <View style={[styles.searchBar, { backgroundColor: palette.surface, borderColor: palette.border }]}>
           <Ionicons name="search" size={18} color={palette.muted} />
           <TextInput
             placeholder="Search recipes, ingredients..."
@@ -320,22 +380,59 @@ export default function CookbookList() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.actionRow}
         >
-          {CATEGORIES.map((label, index) => {
-            const isActive = label === activeCategory;
+          {['All', ...DEFAULT_CATEGORIES].map((label) => {
+            const isActive = label === selectedCategory;
             return (
-            <TouchableOpacity
-              key={label}
-              style={[
-                styles.actionButton,
-                { backgroundColor: palette.surface, borderColor: palette.border },
-                isActive && { backgroundColor: palette.chipActive, borderColor: palette.chipActive },
-              ]}
-              onPress={() => setActiveCategory(label)}
-            >
-              <Text style={[styles.actionText, { color: palette.text }, isActive && { color: palette.chipText }]}>{label}</Text>
-            </TouchableOpacity>
+              <TouchableOpacity
+                key={label}
+                style={[
+                  styles.actionButton,
+                  { backgroundColor: palette.surface, borderColor: palette.border },
+                  isActive && { backgroundColor: palette.chipActive, borderColor: palette.chipActive },
+                ]}
+                onPress={() => setSelectedCategory(label)}
+              >
+                <Text
+                  style={[
+                    styles.actionText,
+                    { color: palette.text },
+                    isActive && { color: palette.chipText },
+                  ]}
+                >
+                  {label}
+                </Text>
+              </TouchableOpacity>
             );
           })}
+          {isCustomCategory && (
+            <View
+              key="active-custom-category"
+              style={[
+                styles.actionButton,
+                styles.customActiveTag,
+                { backgroundColor: palette.chipActive, borderColor: palette.chipActive },
+              ]}
+            >
+              <Text style={[styles.actionText, { color: palette.chipText }]}>{selectedCategory}</Text>
+              <Pressable
+                onPress={() => setSelectedCategory('All')}
+                hitSlop={8}
+                style={styles.customActiveClose}
+              >
+                <Ionicons name="close" size={12} color={palette.chipText} />
+              </Pressable>
+            </View>
+          )}
+          <TouchableOpacity
+            key="custom-category"
+            style={[
+              styles.actionButton,
+              { backgroundColor: palette.surface, borderColor: palette.border },
+            ]}
+            onPress={() => setIsCustomMenuVisible(true)}
+          >
+            <Text style={[styles.actionText, { color: palette.text }]}>+ Custom</Text>
+          </TouchableOpacity>
         </ScrollView>
         <View style={styles.listSection}>
           {filteredRecipes.map((recipe) => (
@@ -346,8 +443,9 @@ export default function CookbookList() {
               onDelete={() => deleteRecipe(recipe.id)}
               onPress={() =>
                 router.push({
-                  pathname: '/(tabs)/cookbook/recipe-details',
+                  pathname: '/recipe/[id]',
                   params: {
+                    id: recipe.id,
                     recipe: JSON.stringify(recipe),
                   },
                 })
@@ -356,6 +454,90 @@ export default function CookbookList() {
           ))}
         </View>
       </ScrollView>
+      <Modal
+        animationType="slide"
+        transparent
+        visible={isCustomMenuVisible}
+        onRequestClose={() => setIsCustomMenuVisible(false)}
+      >
+        <View style={styles.menuRoot}>
+          <Pressable
+            style={[
+              StyleSheet.absoluteFillObject,
+              styles.menuBackdrop,
+              {
+                backgroundColor: isDarkMode
+                  ? 'rgba(2, 6, 23, 0.12)'
+                  : 'rgba(15, 23, 42, 0.04)',
+              },
+            ]}
+            onPress={() => setIsCustomMenuVisible(false)}
+          />
+          <View
+            style={[
+              styles.menuBox,
+              {
+                backgroundColor: isDarkMode ? 'rgba(15, 23, 42, 0.88)' : 'rgba(255, 255, 255, 0.92)',
+                borderColor: isDarkMode ? 'rgba(148, 163, 184, 0.25)' : 'rgba(148, 163, 184, 0.35)',
+              },
+            ]}
+          >
+            <ScrollView style={styles.menuList} contentContainerStyle={styles.menuListContent}>
+              {customCategories.length === 0 ? (
+                <Text style={[styles.menuEmptyText, { color: isDarkMode ? '#94A3B8' : '#64748B' }]}>
+                  No custom categories yet.
+                </Text>
+              ) : (
+                customCategories.map((category, index) => {
+                  const isSelected = category === selectedCategory;
+                  const isLast = index === customCategories.length - 1;
+                  const iconColor = isSelected
+                    ? palette.chipText
+                    : isDarkMode
+                      ? '#E2E8F0'
+                      : '#0F172A';
+                  return (
+                    <TouchableOpacity
+                      key={category}
+                      style={[
+                        styles.menuItem,
+                        {
+                          borderBottomColor: isDarkMode ? 'rgba(148, 163, 184, 0.25)' : 'rgba(148, 163, 184, 0.35)',
+                          borderBottomWidth: isLast ? 0 : StyleSheet.hairlineWidth,
+                          backgroundColor: isSelected
+                            ? isDarkMode
+                              ? 'rgba(101, 184, 145, 0.2)'
+                              : 'rgba(101, 184, 145, 0.12)'
+                            : 'transparent',
+                        },
+                      ]}
+                      onPress={() => {
+                        setSelectedCategory(category);
+                        setIsCustomMenuVisible(false);
+                      }}
+                    >
+                      <Ionicons
+                        name={isSelected ? 'checkmark-circle' : 'pricetag-outline'}
+                        size={16}
+                        color={iconColor}
+                        style={styles.menuIcon}
+                      />
+                      <Text
+                        style={[
+                          styles.menuItemText,
+                          { color: iconColor },
+                        ]}
+                      >
+                        {category}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </ScreenBackground>
   );
 }
@@ -414,6 +596,61 @@ const styles = StyleSheet.create({
   actionText: {
     fontSize: 14,
     fontWeight: '600',
+  },
+  customActiveTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingRight: 12,
+  },
+  customActiveClose: {
+    marginLeft: 8,
+  },
+  menuRoot: {
+    flex: 1,
+  },
+  menuBackdrop: {
+    backgroundColor: 'transparent',
+  },
+  menuBox: {
+    position: 'absolute',
+    top: 150,
+    right: 20,
+    width: 200,
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+    maxHeight: 320,
+    shadowColor: '#000000',
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 5,
+  },
+  menuList: {
+    maxHeight: 280,
+  },
+  menuListContent: {
+    paddingVertical: 2,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+  },
+  menuIcon: {
+    marginRight: 10,
+  },
+  menuItemText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  menuEmptyText: {
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
+    paddingVertical: 12,
   },
   listSection: {
     gap: 16,

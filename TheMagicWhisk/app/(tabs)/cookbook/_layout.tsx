@@ -23,12 +23,6 @@ export default function CookbookLayout() {
           title: 'Cookbook',
         }}
       />
-      <Stack.Screen
-        name="recipe-details"
-        options={{
-          title: 'Recipe',
-        }}
-      />
     </Stack>
   );
 }
