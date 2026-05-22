@@ -334,7 +334,7 @@ export default function CookbookList() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [recipes]);
 
   const filteredRecipes = useMemo(() => {
     const normalizedSearch = searchQuery.trim().toLowerCase();

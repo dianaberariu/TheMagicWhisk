@@ -123,7 +123,7 @@ export default function RecipeDetailsScreen() {
   }, [params.id]);
   const parsedRecipe = useMemo(() => parseRecipe(params.recipe), [params.recipe]);
   const { addToGroceryList } = useGroceryContext() as GroceryContextValue;
-  const { recipes, deleteRecipe, updateRecipe } = useCookbookContext();
+  const { recipes, deleteRecipe, updateRecipe, fetchRecipes } = useCookbookContext();
   const storedRecipe = recipes.find((item) => item.id === (recipeId ?? parsedRecipe.id));
   const recipe = storedRecipe ?? parsedRecipe;
   const baselineRecipe = storedRecipe ?? parsedRecipe;
@@ -392,6 +392,7 @@ export default function RecipeDetailsScreen() {
     }
 
     setCurrentCategory(category);
+    updateRecipe({ ...recipe, category, title: recipe.title ?? safeTitle });
 
     if (options?.closeMenu) {
       setIsCustomMenuVisible(false);
@@ -460,23 +461,54 @@ export default function RecipeDetailsScreen() {
         next.sort((left, right) => left.localeCompare(right));
         return Array.from(new Set(next));
       });
-
-      setCurrentCategory(nextName);
-
-      const { error: updateError } = await supabase
-        .from('recipes')
-        .update({ category: nextName })
-        .eq('id', recipe.id);
-
-      if (updateError) {
-        console.error('Failed to update recipe category', updateError);
-      }
-
+      await handleCategorySelect(nextName, { closeMenu: true });
       setNewCustomCategory('');
-      setIsCustomMenuVisible(false);
     } catch (error) {
       console.error('Failed to add custom category', error);
     }
+  };
+
+  const handleDeleteCustomCategory = (categoryName: string) => {
+    Alert.alert('Delete Category?', 'Are you sure you want to delete this custom category?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            const { error } = await supabase
+              .from('custom_categories')
+              .delete()
+              .eq('name', categoryName);
+
+            if (error) {
+              console.error('Failed to delete custom category', error);
+              return;
+            }
+
+            const { error: updateError } = await supabase
+              .from('recipes')
+              .update({ category: 'Breakfast' })
+              .eq('category', categoryName);
+
+            if (updateError) {
+              console.error('Failed to update recipes for deleted category', updateError);
+              return;
+            }
+
+            fetchRecipes();
+
+            setCustomCategories((prev) => prev.filter((category) => category !== categoryName));
+
+            if (currentCategory === categoryName) {
+              await handleCategorySelect('Breakfast');
+            }
+          } catch (error) {
+            console.error('Failed to delete custom category', error);
+          }
+        },
+      },
+    ]);
   };
 
   useEffect(() => {
@@ -487,25 +519,23 @@ export default function RecipeDetailsScreen() {
     const currentId = recipe.id;
     const lastSynced = lastSyncedRef.current;
 
-    if (lastSynced.id === currentId && lastSynced.servings === normalizedTargetServings && lastSynced.title === safeTitle) {
+    if (lastSynced.id === currentId && lastSynced.title === safeTitle) {
       return;
     }
 
     const updatedRecipe = {
       ...baselineRecipe,
       title: safeTitle,
-      servings: normalizedTargetServings,
-      ingredients: scaledIngredients,
     };
 
     lastSyncedRef.current = {
       id: currentId,
-      servings: normalizedTargetServings,
+      servings: lastSynced.servings,
       title: safeTitle,
     };
 
     updateRecipe(updatedRecipe);
-  }, [baselineRecipe, isFallbackRecipe, normalizedTargetServings, recipe.id, safeTitle, scaledIngredients, updateRecipe]);
+  }, [baselineRecipe, isFallbackRecipe, recipe.id, safeTitle, updateRecipe]);
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: palette.background }]} edges={['top']}>
@@ -909,7 +939,19 @@ export default function RecipeDetailsScreen() {
                         color={iconColor}
                         style={styles.menuIcon}
                       />
-                      <Text style={[styles.menuItemText, { color: iconColor }]}>{category}</Text>
+                      <View style={styles.menuItemTextWrap}>
+                        <Text style={[styles.menuItemText, { color: iconColor }]}>{category}</Text>
+                      </View>
+                      <TouchableOpacity
+                        style={styles.menuDeleteButton}
+                        onPress={(event) => {
+                          event.stopPropagation();
+                          handleDeleteCustomCategory(category);
+                        }}
+                        hitSlop={8}
+                      >
+                        <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                      </TouchableOpacity>
                     </TouchableOpacity>
                   );
                 })
@@ -1296,9 +1338,16 @@ const styles = StyleSheet.create({
   menuIcon: {
     marginRight: 10,
   },
+  menuItemTextWrap: {
+    flex: 1,
+  },
   menuItemText: {
     fontSize: 13,
     fontWeight: '600',
+  },
+  menuDeleteButton: {
+    paddingLeft: 6,
+    paddingVertical: 4,
   },
   menuEmptyText: {
     fontSize: 12,

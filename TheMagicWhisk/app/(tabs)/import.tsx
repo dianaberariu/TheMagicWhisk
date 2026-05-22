@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import ScreenBackground from '../../components/ScreenBackground';
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { useCookbookContext } from '../../CookbookContext';
 import { useThemeContext } from '../../context/ThemeContext';
@@ -16,6 +16,15 @@ const COLORS = {
   inputFill: '#F9FAFB',
   primary: '#65B891',
 };
+
+const LOADING_MESSAGES = [
+  'Whisking the ingredients...',
+  'Asking the AI chef...',
+  'Chopping the vegetables...',
+  'Plating the dish...',
+  'Simmering the flavors...',
+  'Tasting for seasoning...',
+];
 
 const CATEGORIES = ['Breakfast', 'Lunch', 'Dinner', 'Sweets'] as const;
 type Category = (typeof CATEGORIES)[number];
@@ -53,7 +62,7 @@ function isSupportedRecipeLink(value: string) {
 
 export default function ImportScreen() {
   const router = useRouter();
-  const { addRecipe } = useCookbookContext();
+  const { addRecipe, fetchRecipes } = useCookbookContext();
   const { isDarkMode } = useThemeContext();
   const [selectedCategory, setSelectedCategory] = useState<CategoryValue>('Lunch');
   const [customCategories, setCustomCategories] = useState<CustomCategory[]>([]);
@@ -64,6 +73,7 @@ export default function ImportScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [urlInput, setUrlInput] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
 
   const isDefaultCategory = (value: string): value is Category => CATEGORIES.includes(value as Category);
   const isCustomCategorySelected = selectedCategory.length > 0 && !isDefaultCategory(selectedCategory);
@@ -132,6 +142,22 @@ export default function ImportScreen() {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!isLoading) {
+      setLoadingMessageIndex(0);
+      return;
+    }
+
+    setLoadingMessageIndex(0);
+    const intervalId = setInterval(() => {
+      setLoadingMessageIndex((current) => (current + 1) % LOADING_MESSAGES.length);
+    }, 2500);
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [isLoading]);
 
   const closeCategoryModal = () => {
     setIsCategoryModalVisible(false);
@@ -222,6 +248,55 @@ export default function ImportScreen() {
     closeCategoryModal();
   };
 
+  const handleDeleteCustomCategory = (categoryId: string, categoryName: string) => {
+    Alert.alert(
+      'Delete Category?',
+      'Are you sure you want to delete this custom category?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error } = await supabase
+                .from('custom_categories')
+                .delete()
+                .eq('id', categoryId);
+
+              if (error) {
+                console.error('Failed to delete custom category', error);
+                return;
+              }
+
+              const { error: updateError } = await supabase
+                .from('recipes')
+                .update({ category: 'Lunch' })
+                .eq('category', categoryName);
+
+              if (updateError) {
+                console.error('Failed to update recipes for deleted category', updateError);
+                return;
+              }
+
+              fetchRecipes();
+
+              setCustomCategories((current) =>
+                current.filter((category) => category.id !== categoryId)
+              );
+
+              if (selectedCategory === categoryName) {
+                setSelectedCategory('Lunch');
+              }
+            } catch (error) {
+              console.error('Failed to delete custom category', error);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleExtract = async () => {
     if (isLoading) {
       return;
@@ -242,7 +317,7 @@ export default function ImportScreen() {
 
     setIsLoading(true);
     try {
-      const response = await fetch('http://192.168.1.171:8000/api/extract', {
+      const response = await fetch('http://192.168.1.132:8000/api/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: urlInput }),
@@ -274,7 +349,7 @@ export default function ImportScreen() {
 
         const completeRecipe = {
           id: Date.now().toString(),
-          category: isDefaultCategory(selectedCategory) ? selectedCategory : undefined,
+          category: selectedCategory,
           title: localizedData.title,
           ingredients: localizedData.ingredients,
           instructions: localizedData.instructions,
@@ -400,9 +475,6 @@ export default function ImportScreen() {
           disabled={isLoading}
         >
           <View style={styles.buttonContent}>
-            {isLoading && (
-              <ActivityIndicator size="small" color="#FFFFFF" style={styles.buttonSpinner} />
-            )}
             <Text style={styles.buttonText}>
               {isLoading ? 'Analyzing Video...' : 'Extract Recipe'}
             </Text>
@@ -501,13 +573,33 @@ export default function ImportScreen() {
                         color={iconColor}
                         style={styles.menuIcon}
                       />
-                      <Text style={[styles.menuItemText, { color: iconColor }]}>{category.name}</Text>
+                      <View style={styles.menuItemTextWrap}>
+                        <Text style={[styles.menuItemText, { color: iconColor }]}>{category.name}</Text>
+                      </View>
+                      <Pressable
+                        onPress={(event) => {
+                          event.stopPropagation();
+                          handleDeleteCustomCategory(category.id, category.name);
+                        }}
+                        style={styles.menuDeleteButton}
+                        hitSlop={8}
+                      >
+                        <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                      </Pressable>
                     </Pressable>
                   );
                 })
               )}
             </ScrollView>
           </View>
+        </View>
+      </Modal>
+      <Modal transparent={true} visible={isLoading} animationType="fade">
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color="#FFFFFF" />
+          <Text style={styles.loadingText}>
+            {LOADING_MESSAGES[loadingMessageIndex] || 'Cooking up something tasty...'}
+          </Text>
         </View>
       </Modal>
     </ScreenBackground>
@@ -607,13 +699,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  buttonSpinner: {
-    marginRight: 10,
-  },
   buttonText: {
     fontSize: 16,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  loadingOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  loadingText: {
+    marginTop: 18,
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center',
+    letterSpacing: 0.2,
   },
   menuRoot: {
     flex: 1,
@@ -687,12 +791,19 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 10,
   },
+  menuItemTextWrap: {
+    flex: 1,
+  },
   menuIcon: {
     marginRight: 10,
   },
   menuItemText: {
     fontSize: 13,
     fontWeight: '600',
+  },
+  menuDeleteButton: {
+    paddingLeft: 6,
+    paddingVertical: 4,
   },
   menuEmptyText: {
     fontSize: 12,

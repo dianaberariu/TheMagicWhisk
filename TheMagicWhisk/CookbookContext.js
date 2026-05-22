@@ -79,6 +79,7 @@ const uploadRecipeImage = async (imageUrl, recipeId) => {
 /**
 * @typedef {Object} RecipeTranslation
 * @property {string} [title]
+* @property {number | undefined} [servings]
 * @property {RecipeMacros} [macros]
 * @property {string | number | undefined} [calories]
 * @property {RecipeIngredient[]} [ingredients]
@@ -89,8 +90,9 @@ const uploadRecipeImage = async (imageUrl, recipeId) => {
 /**
 * @typedef {Object} Recipe
 * @property {string} id
-* @property {'Breakfast' | 'Lunch' | 'Dinner' | 'Sweets'} [category]
+* @property {string} [category]
 * @property {string} title
+* @property {number | undefined} [servings]
 * @property {RecipeMacros} [macros]
 * @property {string | number | undefined} [calories]
 * @property {string | undefined} [image]
@@ -108,6 +110,7 @@ const uploadRecipeImage = async (imageUrl, recipeId) => {
 * @property {(recipeId: string) => void} deleteRecipe
 * @property {(recipeId: string, category: string) => void} updateRecipeCategory
 * @property {(recipe: Recipe) => void} updateRecipe
+* @property {() => Promise<void>} fetchRecipes
 */
 
 const CookbookContext = createContext(/** @type {CookbookContextValue | null} */ (null));
@@ -224,8 +227,9 @@ addRecipe,
 deleteRecipe,
 updateRecipeCategory,
 updateRecipe,
+fetchRecipes,
 }),
-[recipes, loading, addRecipe, deleteRecipe, updateRecipeCategory, updateRecipe]
+[recipes, loading, addRecipe, deleteRecipe, updateRecipeCategory, updateRecipe, fetchRecipes]
 );
 
 return <CookbookContext.Provider value={value}>{children}</CookbookContext.Provider>;
