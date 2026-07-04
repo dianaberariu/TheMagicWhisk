@@ -13,7 +13,7 @@ export default function CookbookLayout() {
           fontSize: 16,
           fontWeight: '600',
         },
-        headerBackTitleVisible: false,
+        headerBackTitle: '',
       }}
     >
       <Stack.Screen

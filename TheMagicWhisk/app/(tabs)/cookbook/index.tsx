@@ -296,6 +296,19 @@ export default function CookbookList() {
       try {
         const { data: userData, error: userError } = await supabase.auth.getUser();
         if (userError) {
+          const message = typeof userError.message === 'string' ? userError.message : '';
+          const isMissingSession =
+            userError.name === 'AuthSessionMissingError' ||
+            message.includes('Auth session missing') ||
+            userError.status === 401;
+
+          if (isMissingSession) {
+            if (isMounted) {
+              setCustomCategories([]);
+            }
+            return;
+          }
+
           console.error('Failed to load custom categories user', userError);
           return;
         }

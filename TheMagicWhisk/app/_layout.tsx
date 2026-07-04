@@ -8,8 +8,7 @@ import 'react-native-reanimated';
 
 import { AuthProvider, useAuth } from '../AuthContext';
 import { CookbookProvider, useCookbookContext } from '../CookbookContext';
-import { GroceryProvider } from '../GroceryContext';
-import { useGroceryContext } from '../GroceryContext';
+import { GroceryProvider, useGroceryContext } from '../GroceryContext';
 import { ThemeProvider as AppThemeProvider, useThemeContext } from '../context/ThemeContext';
 
 export const unstable_settings = {
@@ -19,6 +18,12 @@ export const unstable_settings = {
 type GroceryContextValue = {
   clearGroceryList: () => Promise<void> | void;
 };
+
+const loadingContainerStyle = {
+  flex: 1,
+  alignItems: 'center',
+  justifyContent: 'center',
+} as const;
 
 export default function RootLayout() {
   return (
@@ -33,7 +38,7 @@ function RootLayoutShell() {
 
   if (!isThemeReady) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#121212' }}>
+      <View style={[loadingContainerStyle, { backgroundColor: '#121212' }]}> 
         <ActivityIndicator size="large" color="#65B891" />
       </View>
     );
@@ -111,7 +116,7 @@ function RootLayoutContent() {
 
   if (!isInitialized || loading) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={loadingContainerStyle}>
         <ActivityIndicator size="large" />
       </View>
     );

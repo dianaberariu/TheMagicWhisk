@@ -232,8 +232,11 @@ export default function HomeScreen() {
                   activeOpacity={0.9}
                   onPress={() =>
                     router.push({
-                      pathname: `/recipe/${featuredRecipe.id}`,
-                      params: { recipe: JSON.stringify(featuredRecipe) },
+                      pathname: '/recipe/[id]',
+                      params: {
+                        id: featuredRecipe.id,
+                        recipe: JSON.stringify(featuredRecipe),
+                      },
                     })
                   }
                   style={{
@@ -312,8 +315,11 @@ export default function HomeScreen() {
                     activeOpacity={0.9}
                     onPress={() =>
                       router.push({
-                        pathname: `/recipe/${recipe.id}`,
-                        params: { recipe: JSON.stringify(recipe) },
+                        pathname: '/recipe/[id]',
+                        params: {
+                          id: recipe.id,
+                          recipe: JSON.stringify(recipe),
+                        },
                       })
                     }
                   >

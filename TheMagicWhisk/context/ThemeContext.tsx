@@ -20,12 +20,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
     const loadThemePreference = async () => {
       try {
-        const { data, error } = await supabase.auth.getUser();
+        const { data, error } = await supabase.auth.getSession();
+
         if (error) {
           console.error('Failed to load theme preference', error);
         }
 
-        const preference = data?.user?.user_metadata?.theme_preference;
+        const preference = data?.session?.user?.user_metadata?.theme_preference;
         let resolved: 'dark' | 'light' | null = null;
 
         if (preference === 'dark' || preference === 'light') {
@@ -42,7 +43,17 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
           await AsyncStorage.setItem(THEME_STORAGE_KEY, resolved);
         }
       } catch (err) {
-        console.error('Failed to load theme preference', err);
+        if (err instanceof Error && err.name === 'AuthSessionMissingError') {
+          // No active Supabase session yet — fallback to local theme storage.
+          const stored = await AsyncStorage.getItem(THEME_STORAGE_KEY);
+          if (stored === 'dark' || stored === 'light') {
+            if (isMounted) {
+              setIsDarkMode(stored === 'dark');
+            }
+          }
+        } else {
+          console.error('Failed to load theme preference', err);
+        }
       } finally {
         if (isMounted) {
           setIsThemeReady(true);

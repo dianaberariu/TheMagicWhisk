@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { useAuth } from '../AuthContext';
 
@@ -61,7 +61,7 @@ export default function LoginScreen() {
       <View style={styles.container}>
         <View style={styles.hero}>
           <View style={styles.iconBadge}>
-            <Text style={styles.iconEmoji}>{isRegistering ? '🍳' : '🪄'}</Text>
+            <Image source={require('../assets/images/LOGO.jpg')} style={styles.logo} resizeMode="contain" />
           </View>
           <Text style={styles.title}>The Magic Whisk</Text>
           <Text style={styles.subtitle}>
@@ -186,8 +186,9 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     elevation: 3,
   },
-  iconEmoji: {
-    fontSize: 34,
+  logo: {
+    width: 64,
+    height: 64,
   },
   card: {
     backgroundColor: '#FFFFFF',
