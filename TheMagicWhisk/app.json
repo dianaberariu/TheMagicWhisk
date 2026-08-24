@@ -29,7 +29,13 @@
     "web": {
       "output": "static",
       "favicon": "./assets/images/favicon.png",
-      "baseUrl": "/TheMagicWhisk/"
+      "baseUrl": "/TheMagicWhisk/",
+      "bundler": "metro",
+      "build": {
+        "babel": {
+          "include": ["@expo/vector-icons", "expo-font"]
+        }
+      }
     },
     "plugins": [
       "expo-router",
