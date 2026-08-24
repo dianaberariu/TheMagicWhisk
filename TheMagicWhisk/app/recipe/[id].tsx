@@ -89,12 +89,18 @@ function parseRecipe(param: string | string[] | undefined): Recipe | null {
 export default function RecipeDetailsScreen() {
   const router = useRouter();
   const { isDarkMode } = useThemeContext();
-  const params = useLocalSearchParams<{ id?: string; recipe?: string }>();
+  const params = useLocalSearchParams<{ id?: string; recipe?: string; fromImport?: string }>();
   
   const recipeId = useMemo(() => {
     const raw = params.id;
     return Array.isArray(raw) ? raw[0] : raw;
   }, [params.id]);
+
+  const cameFromImport = useMemo(() => {
+    const raw = params.fromImport;
+    const value = Array.isArray(raw) ? raw[0] : raw;
+    return value === 'true';
+  }, [params.fromImport]);
   
   const parsedRecipe = useMemo(() => parseRecipe(params.recipe), [params.recipe]);
   const { addToGroceryList } = useGroceryContext() as GroceryContextValue;
@@ -174,6 +180,15 @@ export default function RecipeDetailsScreen() {
     servings: null,
     title: null,
   });
+
+  const handleBackNavigation = () => {
+    if (cameFromImport) {
+      router.replace('/(tabs)/cookbook');
+      return;
+    }
+
+    router.back();
+  };
 
   useEffect(() => {
     setTargetServings(baselineServings);
@@ -410,7 +425,7 @@ export default function RecipeDetailsScreen() {
           Recipe loading or not found...
         </Text>
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={handleBackNavigation}
           style={{ paddingHorizontal: 20, paddingVertical: 12, backgroundColor: '#65B891', borderRadius: 12 }}
         >
           <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 16 }}>Go Back</Text>
@@ -424,6 +439,7 @@ export default function RecipeDetailsScreen() {
       <Stack.Screen
         options={{
           animation: 'fade',
+          gestureEnabled: !cameFromImport,
           title: safeTitle,
           headerStyle: { backgroundColor: palette.background },
           headerShadowVisible: false,
@@ -432,7 +448,7 @@ export default function RecipeDetailsScreen() {
           headerLeft: () => (
             <TouchableOpacity
               style={[styles.headerIconButton, { backgroundColor: isDarkMode ? '#232323' : '#F3F4F6', borderColor: palette.border }]}
-              onPress={() => router.back()}
+              onPress={handleBackNavigation}
             >
               <Ionicons name="chevron-back" size={24} color={palette.text} />
             </TouchableOpacity>
@@ -443,7 +459,7 @@ export default function RecipeDetailsScreen() {
               onPress={() =>
                 Alert.alert('Delete Recipe?', undefined, [
                   { text: 'Cancel', style: 'cancel' },
-                  { text: 'Delete', style: 'destructive', onPress: () => { deleteRecipe(recipe.id); router.back(); } },
+                  { text: 'Delete', style: 'destructive', onPress: () => { deleteRecipe(recipe.id); handleBackNavigation(); } },
                 ])
               }
             >
@@ -636,7 +652,7 @@ export default function RecipeDetailsScreen() {
                   const iconColor = isSelected ? '#FFFFFF' : isDarkMode ? '#E2E8F0' : '#0F172A';
                   return (
                     <TouchableOpacity
-                      key={category}
+                      key={`${category}-${index}`}
                       style={[styles.menuItem, { borderBottomColor: menuColors.border, borderBottomWidth: isLast ? 0 : StyleSheet.hairlineWidth, backgroundColor: isSelected ? (isDarkMode ? 'rgba(101, 184, 145, 0.2)' : 'rgba(101, 184, 145, 0.12)') : 'transparent' }]}
                       onPress={() => handleCategorySelect(category, { closeMenu: true })}
                     >

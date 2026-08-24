@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 import ScreenBackground from '../../components/ScreenBackground';
-import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { useCookbookContext } from '../../CookbookContext';
 import { useThemeContext } from '../../context/ThemeContext';
@@ -37,6 +38,75 @@ type CustomCategory = {
 };
 
 const SUPPORTED_DOMAINS = ['tiktok.com', 'instagram.com', 'youtube.com', 'youtu.be'];
+
+const API_PORT = '8000';
+const FALLBACK_API_HOST = Platform.OS === 'android' ? '10.0.2.2' : '127.0.0.1';
+
+function sanitizeBaseUrl(value: string) {
+  return value.replace(/\/$/, '');
+}
+
+function extractHostFromHostUri(hostUri: string) {
+  return hostUri.split(':')[0]?.trim();
+}
+
+function isLikelyLanOrLocalHost(host: string) {
+  if (host === 'localhost' || host === '127.0.0.1') {
+    return true;
+  }
+
+  if (/^10\./.test(host) || /^192\.168\./.test(host)) {
+    return true;
+  }
+
+  const match = host.match(/^172\.(\d{1,2})\./);
+  if (match) {
+    const secondOctet = Number(match[1]);
+    return secondOctet >= 16 && secondOctet <= 31;
+  }
+
+  return false;
+}
+
+function getBackendBaseUrl() {
+  const envBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
+
+  if (envBaseUrl) {
+    return sanitizeBaseUrl(envBaseUrl);
+  }
+
+  const hostUriCandidates = [
+    Constants.expoConfig?.hostUri,
+    (Constants as any)?.manifest?.debuggerHost,
+    (Constants as any)?.manifest2?.extra?.expoGo?.debuggerHost,
+  ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+
+  for (const hostUri of hostUriCandidates) {
+    const host = extractHostFromHostUri(hostUri);
+    if (host && isLikelyLanOrLocalHost(host)) {
+      return `http://${host}:${API_PORT}`;
+    }
+  }
+
+  return `http://${FALLBACK_API_HOST}:${API_PORT}`;
+}
+
+function getBackendFallbackBaseUrls(primaryBaseUrl: string) {
+  const urls = [primaryBaseUrl];
+  const fallbackHosts = ['127.0.0.1', 'localhost', '10.0.2.2'];
+
+  for (const host of fallbackHosts) {
+    const candidate = `http://${host}:${API_PORT}`;
+    if (!urls.includes(candidate)) {
+      urls.push(candidate);
+    }
+  }
+
+  return urls;
+}
+
+const BACKEND_BASE_URL = getBackendBaseUrl();
+const BACKEND_BASE_URL_CANDIDATES = getBackendFallbackBaseUrls(BACKEND_BASE_URL);
 
 function isSupportedRecipeLink(value: string) {
   const trimmed = value.trim();
@@ -317,11 +387,41 @@ export default function ImportScreen() {
 
     setIsLoading(true);
     try {
-      const response = await fetch('http://192.168.1.171/api/extract', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: urlInput }),
-      });
+      let response: Response | null = null;
+      let resolvedApiBaseUrl: string | null = null;
+      let lastError: unknown;
+
+      for (const candidateBaseUrl of BACKEND_BASE_URL_CANDIDATES) {
+        try {
+          const candidateResponse = await fetch(`${candidateBaseUrl}/api/extract`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: trimmedUrl }),
+          });
+
+          response = candidateResponse;
+          resolvedApiBaseUrl = candidateBaseUrl;
+          break;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+
+      if (!response || !resolvedApiBaseUrl) {
+        setErrorMessage('Could not connect to backend. Make sure backend is running and set EXPO_PUBLIC_API_BASE_URL to your Mac IP (example: http://192.168.x.x:8000).');
+        setUrlInput('');
+        console.error('Backend connection failed. Tried URLs:', BACKEND_BASE_URL_CANDIDATES, lastError);
+        return;
+      }
+
+      console.log('Using backend endpoint:', resolvedApiBaseUrl);
+
+      if (!response.ok) {
+        setErrorMessage('Backend returned an error. Please verify that the server is running and reachable.');
+        setUrlInput('');
+        return;
+      }
+
       const data = await response.json();
 
       if (data?.error === 'NOT_A_RECIPE') {
@@ -379,12 +479,16 @@ export default function ImportScreen() {
 
         router.push({
           pathname: '/recipe/[id]',
-          params: { id: insertedRecipe.id, recipe: JSON.stringify(insertedRecipe) },
+          params: {
+            id: insertedRecipe.id,
+            recipe: JSON.stringify(insertedRecipe),
+            fromImport: 'true',
+          },
         });
       }
     } catch (error) {
       setErrorMessage(
-        'Could not connect to the backend. Check your IP address and ensure the server is running.'
+        'Could not connect to the backend. Set EXPO_PUBLIC_API_BASE_URL if needed and ensure the server is reachable on your network.'
       );
       setUrlInput('');
       console.error('Backend connection failed:', error);

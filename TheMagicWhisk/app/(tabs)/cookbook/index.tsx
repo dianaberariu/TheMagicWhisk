@@ -511,7 +511,7 @@ export default function CookbookList() {
                       : '#0F172A';
                   return (
                     <TouchableOpacity
-                      key={category}
+                      key={`${category}-${index}`}
                       style={[
                         styles.menuItem,
                         {

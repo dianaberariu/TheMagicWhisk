@@ -177,6 +177,7 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#FFFFFF',
@@ -187,8 +188,9 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   logo: {
-    width: 64,
-    height: 64,
+    width: '100%',
+    height: '100%',
+    borderRadius: 36,
   },
   card: {
     backgroundColor: '#FFFFFF',

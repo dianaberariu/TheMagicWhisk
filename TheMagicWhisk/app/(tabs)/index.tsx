@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import ScreenBackground from '../../components/ScreenBackground';
 import { Image, ImageBackground, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -8,12 +8,15 @@ import { useCookbookContext } from '../../CookbookContext';
 import { useGroceryContext } from '../../GroceryContext';
 import { useAuth } from '../../AuthContext';
 import { useThemeContext } from '../../context/ThemeContext';
+import { supabase } from '../../supabase';
 
 type Recipe = {
   id: string;
+  category?: string;
   title: string;
   calories: number | string;
   image?: string;
+  image_url?: string;
   source_url?: string | null;
 };
 
@@ -57,11 +60,42 @@ const CATEGORY_LINKS = [
   },
 ] as const;
 
+const SUPABASE_IMAGE_BUCKET = process.env.EXPO_PUBLIC_SUPABASE_IMAGE_BUCKET ?? 'recipe-images';
+
+function normalizeCategory(value?: string) {
+  return (value ?? '').trim().toLowerCase();
+}
+
+function getDeterministicIndex(length: number, seed: number) {
+  if (length <= 1) {
+    return 0;
+  }
+
+  const x = Math.sin(seed) * 10000;
+  const fractional = x - Math.floor(x);
+  return Math.floor(fractional * length);
+}
+
+function getRecipeImageUri(recipe: Recipe) {
+  const remoteImage = (recipe.image_url ?? recipe.image ?? '').trim();
+  if (!remoteImage) {
+    return '';
+  }
+
+  if (remoteImage.startsWith('http://') || remoteImage.startsWith('https://')) {
+    return remoteImage;
+  }
+
+  const { data } = supabase.storage.from(SUPABASE_IMAGE_BUCKET).getPublicUrl(remoteImage);
+  return data?.publicUrl ?? '';
+}
+
 export default function HomeScreen() {
   const router = useRouter();
   const { isDarkMode } = useThemeContext();
   const [searchQuery, setSearchQuery] = useState('');
   const [featuredRecipe, setFeaturedRecipe] = useState<any>(null);
+  const [randomSeed, setRandomSeed] = useState(() => Date.now());
   const { recipes } = useCookbookContext();
   const { groceryList } = useGroceryContext() as GroceryContextValue;
   const { signOut, user } = useAuth();
@@ -85,6 +119,12 @@ export default function HomeScreen() {
         cardSoft: '#F2FAF6',
       };
 
+  useFocusEffect(
+    useCallback(() => {
+      setRandomSeed(Date.now());
+    }, [])
+  );
+
   useEffect(() => {
     const recipeList = recipes as Recipe[];
     if (!recipeList?.length) {
@@ -92,9 +132,36 @@ export default function HomeScreen() {
       return;
     }
 
-    const randomIndex = Math.floor(Math.random() * recipeList.length);
+    const randomIndex = getDeterministicIndex(recipeList.length, randomSeed);
     setFeaturedRecipe(recipeList[randomIndex]);
-  }, [recipes]);
+  }, [randomSeed, recipes]);
+
+  const categoryCards = useMemo(() => {
+    const recipeList = recipes as Recipe[];
+
+    return CATEGORY_LINKS.map((category, index) => {
+      const categoryRecipes = recipeList.filter(
+        (recipe) => normalizeCategory(recipe.category) === normalizeCategory(category.name)
+      );
+
+      const recipesWithImage = categoryRecipes
+        .map((recipe) => ({
+          recipe,
+          imageUri: getRecipeImageUri(recipe),
+        }))
+        .filter((entry) => entry.imageUri.length > 0);
+
+      if (!recipesWithImage.length) {
+        return category;
+      }
+
+      const randomIndex = getDeterministicIndex(recipesWithImage.length, randomSeed + index + 1);
+      return {
+        ...category,
+        image: recipesWithImage[randomIndex].imageUri,
+      };
+    });
+  }, [randomSeed, recipes]);
 
   const handleSignOut = async () => {
     try {
@@ -157,7 +224,7 @@ export default function HomeScreen() {
 
           {recipes && recipes.length > 0 ? (
             <View style={styles.categoryGrid}>
-              {CATEGORY_LINKS.map((category) => (
+              {categoryCards.map((category) => (
                 <TouchableOpacity
                   key={category.name}
                   activeOpacity={0.8}

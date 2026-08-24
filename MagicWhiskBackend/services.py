@@ -1,3 +1,4 @@
+import ast
 import base64
 import json
 import os
@@ -105,7 +106,15 @@ the original units.
         content = content[: -len("```")]
     content = content.strip()
 
-    return json.loads(content)
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        try:
+            return ast.literal_eval(content)
+        except Exception as exc:
+            raise ValueError(
+                f"Could not parse AI response as JSON: {exc}. Response content: {content}"
+            )
 
 
 def generate_recipe_image(image_prompt: str, client: openai.OpenAI | None = None) -> str | None:
