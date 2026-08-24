@@ -1,10 +1,12 @@
 import React, { useCallback, useState } from 'react';
 import { ActivityIndicator, Image, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 
 import { useAuth } from '../AuthContext';
 import { showAlert } from '../utils/showAlert';
+import { getAuthErrorMessage } from '../utils/authErrorMessage';
 
 const isExistingAccountResult = (
   error?: { message?: string } | null,
@@ -45,22 +47,38 @@ export default function LoginScreen() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
-  const [focusedField, setFocusedField] = useState<'name' | 'email' | 'password' | null>(null);
+  const [focusedField, setFocusedField] = useState<'name' | 'email' | 'password' | 'confirmPassword' | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
       setName('');
       setEmail('');
       setPassword('');
+      setConfirmPassword('');
       setErrorMessage('');
       setFocusedField(null);
+      setShowPassword(false);
+      setShowConfirmPassword(false);
     }, [])
   );
 
+  const handleSelectMode = (nextIsRegistering: boolean) => {
+    setIsRegistering(nextIsRegistering);
+    setErrorMessage('');
+  };
+
   const handleAuth = async (action: 'signIn' | 'signUp') => {
+    if (action === 'signUp' && password !== confirmPassword) {
+      setErrorMessage('Passwords do not match.');
+      return;
+    }
+
     setLoading(true);
     setErrorMessage('');
 
@@ -80,7 +98,7 @@ export default function LoginScreen() {
       }
 
       if (result?.error) {
-        setErrorMessage(result.error.message ?? 'Authentication failed');
+        setErrorMessage(getAuthErrorMessage(result.error));
         return;
       }
 
@@ -88,6 +106,7 @@ export default function LoginScreen() {
         setName('');
         setEmail('');
         setPassword('');
+        setConfirmPassword('');
         showAlert(
           'Account created',
           'Please check your email for the verification link before logging in.',
@@ -96,7 +115,7 @@ export default function LoginScreen() {
       }
     } catch (error) {
       console.log('[LOGIN FLOW] Error caught:', error);
-      setErrorMessage(error instanceof Error ? error.message : 'Authentication failed');
+      setErrorMessage(getAuthErrorMessage(error instanceof Error ? error : null));
     } finally {
       setLoading(false);
     }
@@ -114,54 +133,115 @@ export default function LoginScreen() {
             <Image source={require('../assets/images/LOGO.jpg')} style={styles.logo} resizeMode="contain" />
           </View>
           <Text style={styles.title}>The Magic Whisk</Text>
-          <Text style={styles.subtitle}>
-            {isRegistering
-              ? 'Start your smart culinary journey today'
-              : 'Welcome back to your digital cookbook'}
-          </Text>
         </View>
 
         <View style={styles.card}>
+          <View style={styles.segmentedControl}>
+            <Pressable
+              onPress={() => handleSelectMode(false)}
+              disabled={loading}
+              style={[styles.segment, !isRegistering && styles.segmentActive]}
+              hitSlop={4}
+            >
+              <Text style={[styles.segmentText, !isRegistering && styles.segmentTextActive]}>Sign In</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => handleSelectMode(true)}
+              disabled={loading}
+              style={[styles.segment, isRegistering && styles.segmentActive]}
+              hitSlop={4}
+            >
+              <Text style={[styles.segmentText, isRegistering && styles.segmentTextActive]}>Sign Up</Text>
+            </Pressable>
+          </View>
+
           {isRegistering ? (
-            <TextInput
-              value={name}
-              onChangeText={setName}
-              placeholder="First Name"
-              placeholderTextColor="#8B96A8"
-              autoCapitalize="words"
-              autoCorrect={false}
-              textContentType="givenName"
-              autoComplete="name"
-              onFocus={() => setFocusedField('name')}
-              onBlur={() => setFocusedField((current) => (current === 'name' ? null : current))}
-              style={[styles.input, focusedField === 'name' && styles.inputFocused]}
-            />
+            <View style={[styles.fieldWrapper, focusedField === 'name' && styles.fieldWrapperFocused]}>
+              <Ionicons name="person-outline" size={20} color="#8B96A8" style={styles.fieldIcon} />
+              <TextInput
+                value={name}
+                onChangeText={setName}
+                placeholder="First Name"
+                placeholderTextColor="#8B96A8"
+                autoCapitalize="words"
+                autoCorrect={false}
+                textContentType="givenName"
+                autoComplete="name"
+                onFocus={() => setFocusedField('name')}
+                onBlur={() => setFocusedField((current) => (current === 'name' ? null : current))}
+                style={styles.fieldInput}
+              />
+            </View>
           ) : null}
-          <TextInput
-            value={email}
-            onChangeText={setEmail}
-            placeholder="Email"
-            placeholderTextColor="#94A3B8"
-            autoCapitalize="none"
-            keyboardType="email-address"
-            autoComplete="email"
-            textContentType="emailAddress"
-            onFocus={() => setFocusedField('email')}
-            onBlur={() => setFocusedField((current) => (current === 'email' ? null : current))}
-            style={[styles.input, focusedField === 'email' && styles.inputFocused]}
-          />
-          <TextInput
-            value={password}
-            onChangeText={setPassword}
-            placeholder="Password"
-            placeholderTextColor="#94A3B8"
-            secureTextEntry
-            autoComplete="password"
-            textContentType="password"
-            onFocus={() => setFocusedField('password')}
-            onBlur={() => setFocusedField((current) => (current === 'password' ? null : current))}
-            style={[styles.input, focusedField === 'password' && styles.inputFocused]}
-          />
+
+          <View style={[styles.fieldWrapper, focusedField === 'email' && styles.fieldWrapperFocused]}>
+            <Ionicons name="mail-outline" size={20} color="#8B96A8" style={styles.fieldIcon} />
+            <TextInput
+              value={email}
+              onChangeText={setEmail}
+              placeholder="Email"
+              placeholderTextColor="#94A3B8"
+              autoCapitalize="none"
+              keyboardType="email-address"
+              autoComplete="email"
+              textContentType="emailAddress"
+              onFocus={() => setFocusedField('email')}
+              onBlur={() => setFocusedField((current) => (current === 'email' ? null : current))}
+              style={styles.fieldInput}
+            />
+          </View>
+
+          <View style={[styles.fieldWrapper, focusedField === 'password' && styles.fieldWrapperFocused]}>
+            <Ionicons name="lock-closed-outline" size={20} color="#8B96A8" style={styles.fieldIcon} />
+            <TextInput
+              value={password}
+              onChangeText={setPassword}
+              placeholder="Password"
+              placeholderTextColor="#94A3B8"
+              secureTextEntry={!showPassword}
+              autoComplete="password"
+              textContentType="password"
+              onFocus={() => setFocusedField('password')}
+              onBlur={() => setFocusedField((current) => (current === 'password' ? null : current))}
+              style={styles.fieldInput}
+            />
+            <Pressable
+              onPress={() => setShowPassword((value) => !value)}
+              hitSlop={8}
+              style={styles.fieldToggle}
+              accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+            >
+              <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#8B96A8" />
+            </Pressable>
+          </View>
+
+          {isRegistering ? (
+            <View
+              style={[styles.fieldWrapper, focusedField === 'confirmPassword' && styles.fieldWrapperFocused]}
+            >
+              <Ionicons name="lock-closed-outline" size={20} color="#8B96A8" style={styles.fieldIcon} />
+              <TextInput
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                placeholder="Confirm Password"
+                placeholderTextColor="#94A3B8"
+                secureTextEntry={!showConfirmPassword}
+                autoComplete="password"
+                textContentType="newPassword"
+                onFocus={() => setFocusedField('confirmPassword')}
+                onBlur={() => setFocusedField((current) => (current === 'confirmPassword' ? null : current))}
+                style={styles.fieldInput}
+              />
+              <Pressable
+                onPress={() => setShowConfirmPassword((value) => !value)}
+                hitSlop={8}
+                style={styles.fieldToggle}
+                accessibilityLabel={showConfirmPassword ? 'Hide password' : 'Show password'}
+              >
+                <Ionicons name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#8B96A8" />
+              </Pressable>
+            </View>
+          ) : null}
 
           {!isRegistering ? (
             <Pressable
@@ -188,16 +268,6 @@ export default function LoginScreen() {
             ) : (
               <Text style={styles.buttonText}>{isRegistering ? 'Sign Up' : 'Sign In'}</Text>
             )}
-          </Pressable>
-
-          <Pressable
-            onPress={() => setIsRegistering((value) => !value)}
-            disabled={loading}
-            style={({ pressed }) => [styles.toggleLink, pressed && styles.togglePressed]}
-          >
-            <Text style={styles.toggleText}>
-              {isRegistering ? 'Already have an account? Log in' : "Don't have an account? Create one"}
-            </Text>
           </Pressable>
         </View>
       </View>
@@ -270,28 +340,61 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     letterSpacing: -0.4,
   },
-  subtitle: {
-    fontSize: 15,
-    color: '#52606D',
-    lineHeight: 22,
-    textAlign: 'center',
-    maxWidth: 320,
+  segmentedControl: {
+    flexDirection: 'row',
+    backgroundColor: '#F0F5F1',
+    borderRadius: 999,
+    padding: 4,
+    marginBottom: 18,
   },
-  input: {
-    backgroundColor: 'transparent',
-    borderWidth: 0,
+  segment: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  segmentActive: {
+    backgroundColor: '#65B891',
+    shadowColor: '#65B891',
+    shadowOpacity: 0.25,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  segmentText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#5F7D6F',
+  },
+  segmentTextActive: {
+    color: '#FFFFFF',
+  },
+  fieldWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
     borderBottomWidth: 1,
     borderBottomColor: '#D8E4DD',
-    borderRadius: 0,
+    marginBottom: 12,
+  },
+  fieldWrapperFocused: {
+    borderBottomColor: '#D4A74A',
+  },
+  fieldIcon: {
+    marginRight: 8,
+  },
+  fieldInput: {
+    flex: 1,
+    backgroundColor: 'transparent',
     paddingHorizontal: 2,
     paddingTop: 14,
     paddingBottom: 12,
     fontSize: 16,
-    marginBottom: 12,
     color: '#0F172A',
   },
-  inputFocused: {
-    borderBottomColor: '#D4A74A',
+  fieldToggle: {
+    paddingHorizontal: 6,
+    paddingVertical: 8,
   },
   forgotPasswordLink: {
     alignSelf: 'flex-end',
@@ -324,20 +427,8 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0.2,
   },
-  toggleLink: {
-    alignSelf: 'center',
-    marginTop: 18,
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-  },
   togglePressed: {
     opacity: 0.7,
-  },
-  toggleText: {
-    color: '#5F7D6F',
-    fontSize: 13,
-    fontWeight: '600',
-    textAlign: 'center',
   },
   error: {
     color: '#B91C1C',

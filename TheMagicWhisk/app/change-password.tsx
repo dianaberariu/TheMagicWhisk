@@ -62,7 +62,6 @@ export default function ChangePasswordScreen() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -135,7 +134,6 @@ export default function ChangePasswordScreen() {
     }
 
     setErrorMessage(null);
-    setSuccessMessage(null);
 
     const trimmedPassword = newPassword.trim();
     const trimmedConfirm = confirmPassword.trim();
@@ -160,9 +158,12 @@ export default function ChangePasswordScreen() {
         return;
       }
 
-      setSuccessMessage('Your password has been updated successfully.');
       setNewPassword('');
       setConfirmPassword('');
+      await supabase.auth.signOut();
+      showAlert('Success', 'Your password has been updated successfully. Please log in again.', () =>
+        router.replace('/login')
+      );
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : 'Failed to update password.');
     } finally {
@@ -257,9 +258,8 @@ export default function ChangePasswordScreen() {
                       value={newPassword}
                       onChangeText={(text) => {
                         setNewPassword(text);
-                        if (errorMessage || successMessage) {
+                        if (errorMessage) {
                           setErrorMessage(null);
-                          setSuccessMessage(null);
                         }
                       }}
                       placeholder="Enter a new password"
@@ -285,9 +285,8 @@ export default function ChangePasswordScreen() {
                       value={confirmPassword}
                       onChangeText={(text) => {
                         setConfirmPassword(text);
-                        if (errorMessage || successMessage) {
+                        if (errorMessage) {
                           setErrorMessage(null);
-                          setSuccessMessage(null);
                         }
                       }}
                       placeholder="Re-enter the new password"
@@ -309,9 +308,6 @@ export default function ChangePasswordScreen() {
 
                   {errorMessage ? (
                     <Text style={styles.errorText}>{errorMessage}</Text>
-                  ) : null}
-                  {successMessage ? (
-                    <Text style={styles.successText}>{successMessage}</Text>
                   ) : null}
 
                   <Pressable
