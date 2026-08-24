@@ -67,3 +67,10 @@ def extract(request: ExtractRequest) -> dict:
     recipe["image"] = generate_recipe_image(image_prompt, client)
 
     return recipe
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
