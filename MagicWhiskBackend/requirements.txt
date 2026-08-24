@@ -3,6 +3,6 @@ uvicorn==0.46.0
 python-dotenv==1.2.2
 openai==2.36.0
 requests==2.34.0
-yt-dlp==2026.8.19
+yt-dlp[default]==2026.8.19
 supabase==2.30.0
 pydantic==2.13.4
