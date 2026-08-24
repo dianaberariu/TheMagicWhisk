@@ -5,6 +5,17 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../AuthContext';
 import { supabase } from '../supabase';
 
+// Alert.alert() is a no-op on web in react-native-web, so route through window.alert there.
+const showAlert = (title: string, message?: string, onDismiss?: () => void) => {
+  if (Platform.OS === 'web') {
+    window.alert(message ? `${title}\n\n${message}` : title);
+    onDismiss?.();
+    return;
+  }
+
+  Alert.alert(title, message, onDismiss ? [{ text: 'OK', onPress: onDismiss }] : undefined);
+};
+
 const isExistingAccountResult = (
   error?: { message?: string } | null,
   data?: { user?: { identities?: unknown[] | null } | null } | null
@@ -70,7 +81,7 @@ export default function LoginScreen() {
         : await signIn(email.trim(), password);
 
       if (action === 'signUp' && isExistingAccountResult(result?.error, result?.data)) {
-        Alert.alert(
+        showAlert(
           'Account already exists',
           'An account with this email already exists. Please log in instead, or use "Forgot Password?" if you need to reset it.'
         );
@@ -86,10 +97,10 @@ export default function LoginScreen() {
         setName('');
         setEmail('');
         setPassword('');
-        Alert.alert(
+        showAlert(
           'Account created',
           'Please check your email for the verification link before logging in.',
-          [{ text: 'OK', onPress: () => setIsRegistering(false) }]
+          () => setIsRegistering(false)
         );
       }
     } catch (error) {
@@ -113,20 +124,23 @@ export default function LoginScreen() {
 
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail, {
-        redirectTo: 'themagicwhisk://change-password',
+        redirectTo:
+          Platform.OS === 'web'
+            ? `${window.location.origin}/change-password`
+            : 'themagicwhisk://change-password',
       });
 
       if (error) {
-        Alert.alert('Something went wrong', error.message ?? 'Could not send the reset email. Please try again.');
+        showAlert('Something went wrong', error.message ?? 'Could not send the reset email. Please try again.');
         return;
       }
 
-      Alert.alert(
+      showAlert(
         'Check your email',
         `If an account exists for ${trimmedEmail}, we've sent a link to reset your password.`
       );
     } catch (error) {
-      Alert.alert(
+      showAlert(
         'Something went wrong',
         error instanceof Error ? error.message : 'Could not send the reset email. Please try again.'
       );
