@@ -4,7 +4,6 @@ import { useRouter, Stack } from 'expo-router';
 import ScreenBackground from '../components/ScreenBackground';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -20,6 +19,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../AuthContext';
 import { useThemeContext } from '../context/ThemeContext';
 import { supabase } from '../supabase';
+import { showAlert, showConfirm } from '../utils/showAlert';
 
 const COLORS = {
   background: '#F3F8F4',
@@ -97,32 +97,32 @@ export default function SettingsScreen() {
     setFirstName(typeof fullName === 'string' ? fullName : '');
   }, [user?.id, user?.user_metadata?.full_name]);
 
-  const handleDeleteAccount = async () => {
-    Alert.alert(
+  const handleDeleteAccount = () => {
+    showConfirm(
       'Delete Account',
       'Are you absolutely sure? This action is permanent and all your saved culinary data will be lost forever.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const { error } = await supabase.rpc('delete_my_account');
-              if (error) {
-                Alert.alert('Delete Account Failed', 'Please try again in a moment.');
-                return;
-              }
+      'Delete',
+      async () => {
+        try {
+          const { error } = await supabase.rpc('delete_my_account');
+          if (error) {
+            console.error('Delete account RPC failed', error);
+            showAlert('Delete Account Failed', error.message ?? 'Please try again in a moment.');
+            return;
+          }
 
-              await AsyncStorage.removeItem('appTheme');
-              await supabase.auth.signOut();
-              router.replace('/login');
-            } catch (err) {
-              console.error('Delete account failed', err);
-            }
-          },
-        },
-      ]
+          await AsyncStorage.removeItem('appTheme');
+          await supabase.auth.signOut();
+          router.replace('/login');
+        } catch (err) {
+          console.error('Delete account failed', err);
+          showAlert(
+            'Delete Account Failed',
+            err instanceof Error ? err.message : 'Please try again in a moment.'
+          );
+        }
+      },
+      { destructive: true }
     );
   };
 

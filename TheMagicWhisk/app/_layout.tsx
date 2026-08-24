@@ -115,7 +115,7 @@ function RootLayoutContent() {
       return;
     }
 
-    if (session && isAuthRoute) {
+    if (session && firstSegment === 'login') {
       router.replace('/(tabs)');
     }
   }, [firstSegment, isInitialized, router, session]);
