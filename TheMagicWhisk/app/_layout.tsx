@@ -1,8 +1,9 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack, useRouter, useSegments } from 'expo-router';
+import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useRef } from 'react';
-import { ActivityIndicator, View, Platform } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
 
@@ -10,29 +11,6 @@ import { AuthProvider, useAuth } from '../AuthContext';
 import { CookbookProvider, useCookbookContext } from '../CookbookContext';
 import { GroceryProvider, useGroceryContext } from '../GroceryContext';
 import { ThemeProvider as AppThemeProvider, useThemeContext } from '../context/ThemeContext';
-
-// Inject vector icon fonts CSS for web support
-function injectFontCSS() {
-  if (Platform.OS !== 'web') return;
-
-  try {
-    // Check if fonts CSS is already loaded
-    if (document.getElementById('expo-vector-icons-css')) {
-      return;
-    }
-
-    // Create and inject CSS link
-    const link = document.createElement('link');
-    link.id = 'expo-vector-icons-css';
-    link.rel = 'stylesheet';
-    link.href = './fonts.css';
-    document.head.appendChild(link);
-
-    console.log('✅ Vector icon fonts CSS injected');
-  } catch (error) {
-    console.warn('⚠️ Failed to inject icon fonts CSS:', error);
-  }
-}
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -49,10 +27,6 @@ const loadingContainerStyle = {
 } as const;
 
 export default function RootLayout() {
-  useEffect(() => {
-    injectFontCSS();
-  }, []);
-
   return (
     <AppThemeProvider>
       <RootLayoutShell />
@@ -62,8 +36,13 @@ export default function RootLayout() {
 
 function RootLayoutShell() {
   const { isDarkMode, isThemeReady } = useThemeContext();
+  const [fontsLoaded] = useFonts({
+    Ionicons: require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf'),
+    FontAwesome: require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome.ttf'),
+    MaterialIcons: require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialIcons.ttf'),
+  });
 
-  if (!isThemeReady) {
+  if (!isThemeReady || !fontsLoaded) {
     return (
       <View style={[loadingContainerStyle, { backgroundColor: '#121212' }]}> 
         <ActivityIndicator size="large" color="#65B891" />
