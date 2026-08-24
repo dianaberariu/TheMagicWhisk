@@ -5,22 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Redirecting...</title>
   <script>
-    // Redirect all 404s to the index.html with the requested path
-    var pathSegments = window.location.pathname.split('/').filter(Boolean);
-    var baseUrl = '/TheMagicWhisk';
-
-    // Remove baseUrl from path if present
-    if (pathSegments[0] === 'TheMagicWhisk') {
-      pathSegments.shift();
-    }
-
-    // Reconstruct the path without the base URL
-    var path = '/' + pathSegments.join('/');
-    var search = window.location.search || '';
-    var hash = window.location.hash || '';
-
-    // Redirect to index.html with the original path as a query parameter
-    window.location.replace(baseUrl + '/?redirect=' + encodeURIComponent(path + search + hash));
+    window.location.replace('/');
   </script>
 </head>
 <body>
