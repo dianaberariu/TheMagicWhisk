@@ -108,7 +108,7 @@ function RootLayoutContent() {
       return;
     }
 
-    const isAuthRoute = firstSegment === 'login';
+    const isAuthRoute = firstSegment === 'login' || firstSegment === 'change-password';
 
     if (!session && !isAuthRoute) {
       router.replace('/login');

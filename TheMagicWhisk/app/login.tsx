@@ -1,20 +1,10 @@
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useRouter } from 'expo-router';
 
 import { useAuth } from '../AuthContext';
-import { supabase } from '../supabase';
-
-// Alert.alert() is a no-op on web in react-native-web, so route through window.alert there.
-const showAlert = (title: string, message?: string, onDismiss?: () => void) => {
-  if (Platform.OS === 'web') {
-    window.alert(message ? `${title}\n\n${message}` : title);
-    onDismiss?.();
-    return;
-  }
-
-  Alert.alert(title, message, onDismiss ? [{ text: 'OK', onPress: onDismiss }] : undefined);
-};
+import { showAlert } from '../utils/showAlert';
 
 const isExistingAccountResult = (
   error?: { message?: string } | null,
@@ -34,6 +24,7 @@ const isExistingAccountResult = (
 };
 
 export default function LoginScreen() {
+  const router = useRouter();
   const { signIn, signUp } = useAuth() as {
     signIn: (
       email: string,
@@ -111,44 +102,6 @@ export default function LoginScreen() {
     }
   };
 
-  const handleForgotPassword = async () => {
-    const trimmedEmail = email.trim();
-
-    if (!trimmedEmail) {
-      setErrorMessage('Enter your email address first, then tap "Forgot Password?".');
-      return;
-    }
-
-    setLoading(true);
-    setErrorMessage('');
-
-    try {
-      const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail, {
-        redirectTo:
-          Platform.OS === 'web'
-            ? `${window.location.origin}/change-password`
-            : 'themagicwhisk://change-password',
-      });
-
-      if (error) {
-        showAlert('Something went wrong', error.message ?? 'Could not send the reset email. Please try again.');
-        return;
-      }
-
-      showAlert(
-        'Check your email',
-        `If an account exists for ${trimmedEmail}, we've sent a link to reset your password.`
-      );
-    } catch (error) {
-      showAlert(
-        'Something went wrong',
-        error instanceof Error ? error.message : 'Could not send the reset email. Please try again.'
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -212,8 +165,7 @@ export default function LoginScreen() {
 
           {!isRegistering ? (
             <Pressable
-              onPress={handleForgotPassword}
-              disabled={loading}
+              onPress={() => router.push('/change-password')}
               style={({ pressed }) => [styles.forgotPasswordLink, pressed && styles.togglePressed]}
             >
               <Text style={styles.forgotPasswordText}>Forgot Password?</Text>

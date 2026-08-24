@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, Stack } from 'expo-router';
+import * as Linking from 'expo-linking';
 import ScreenBackground from '../components/ScreenBackground';
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -15,6 +17,7 @@ import {
 
 import { useThemeContext } from '../context/ThemeContext';
 import { supabase } from '../supabase';
+import { showAlert } from '../utils/showAlert';
 
 const LIGHT_THEME = {
   background: '#F3F8F4',
@@ -46,11 +49,85 @@ export default function ChangePasswordScreen() {
   const router = useRouter();
   const { isDarkMode } = useThemeContext();
   const theme = isDarkMode ? DARK_THEME : LIGHT_THEME;
+
+  // A session only exists here if the user arrived via the emailed recovery
+  // link (or is already logged in). Without one, updateUser() has nothing to
+  // update, so we show a "request a reset link" form instead.
+  const [checkingSession, setCheckingSession] = useState(true);
+  const [hasSession, setHasSession] = useState(false);
+
+  const [resetEmail, setResetEmail] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (!isMounted) return;
+      setHasSession(!!data.session);
+      setCheckingSession(false);
+    });
+
+    // On web, the recovery session is only attached after Supabase parses the
+    // URL fragment from the emailed link, which can happen just after mount.
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!isMounted) return;
+      if (event === 'PASSWORD_RECOVERY' || session) {
+        setHasSession(!!session);
+      }
+      setCheckingSession(false);
+    });
+
+    return () => {
+      isMounted = false;
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
+
+  const handleSendResetLink = async () => {
+    if (isSubmitting) {
+      return;
+    }
+
+    const trimmedEmail = resetEmail.trim();
+
+    if (!trimmedEmail) {
+      showAlert('Email required', 'Enter your email address first.');
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail, {
+        redirectTo:
+          Platform.OS === 'web'
+            ? `${window.location.origin}/change-password`
+            : Linking.createURL('/change-password'),
+      });
+
+      if (error) {
+        showAlert('Something went wrong', error.message ?? 'Could not send the reset email. Please try again.');
+        return;
+      }
+
+      setResetEmail('');
+      showAlert('Email sent!', 'Please check your inbox.', () => router.replace('/login'));
+    } catch (err) {
+      showAlert(
+        'Something went wrong',
+        err instanceof Error ? err.message : 'Could not send the reset email. Please try again.'
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const handleSavePassword = async () => {
     if (isSaving) {
@@ -120,85 +197,136 @@ export default function ChangePasswordScreen() {
                 <View style={styles.headerSpacer} />
               </View>
 
-              <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.heroBorder }]}> 
-                <Text style={[styles.cardTitle, { color: theme.text }]}>Set a new password</Text>
-                <Text style={[styles.cardSubtitle, { color: theme.muted }]}>Use at least 6 characters.</Text>
-
-                <View style={styles.inputBlock}>
-                  <Text style={[styles.fieldLabel, { color: theme.text }]}>New Password</Text>
-                  <TextInput
-                    value={newPassword}
-                    onChangeText={(text) => {
-                      setNewPassword(text);
-                      if (errorMessage || successMessage) {
-                        setErrorMessage(null);
-                        setSuccessMessage(null);
-                      }
-                    }}
-                    placeholder="Enter a new password"
-                    placeholderTextColor={theme.muted}
-                    secureTextEntry
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    textContentType="newPassword"
-                    style={[
-                      styles.input,
-                      {
-                        backgroundColor: theme.inputBackground,
-                        borderColor: theme.border,
-                        color: theme.text,
-                      },
-                    ]}
-                  />
+              {checkingSession ? (
+                <View style={styles.loadingBlock}>
+                  <ActivityIndicator color={theme.muted} />
                 </View>
+              ) : !hasSession ? (
+                <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.heroBorder }]}>
+                  <Text style={[styles.cardTitle, { color: theme.text }]}>Reset your password</Text>
+                  <Text style={[styles.cardSubtitle, { color: theme.muted }]}>
+                    Enter your account email and we'll send you a link to set a new password.
+                  </Text>
 
-                <View style={styles.inputBlock}>
-                  <Text style={[styles.fieldLabel, { color: theme.text }]}>Confirm New Password</Text>
-                  <TextInput
-                    value={confirmPassword}
-                    onChangeText={(text) => {
-                      setConfirmPassword(text);
-                      if (errorMessage || successMessage) {
-                        setErrorMessage(null);
-                        setSuccessMessage(null);
-                      }
-                    }}
-                    placeholder="Re-enter the new password"
-                    placeholderTextColor={theme.muted}
-                    secureTextEntry
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    textContentType="password"
-                    style={[
-                      styles.input,
-                      {
-                        backgroundColor: theme.inputBackground,
-                        borderColor: theme.border,
-                        color: theme.text,
-                      },
+                  <View style={styles.inputBlock}>
+                    <Text style={[styles.fieldLabel, { color: theme.text }]}>Email</Text>
+                    <TextInput
+                      value={resetEmail}
+                      onChangeText={setResetEmail}
+                      placeholder="Enter your email"
+                      placeholderTextColor={theme.muted}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      keyboardType="email-address"
+                      textContentType="emailAddress"
+                      style={[
+                        styles.input,
+                        {
+                          backgroundColor: theme.inputBackground,
+                          borderColor: theme.border,
+                          color: theme.text,
+                        },
+                      ]}
+                    />
+                  </View>
+
+                  <Pressable
+                    onPress={handleSendResetLink}
+                    disabled={isSubmitting}
+                    style={({ pressed }) => [
+                      styles.saveButton,
+                      pressed && styles.pressed,
+                      isSubmitting && styles.saveButtonDisabled,
                     ]}
-                  />
+                  >
+                    {isSubmitting ? (
+                      <ActivityIndicator color="#FFFFFF" />
+                    ) : (
+                      <Text style={styles.saveButtonText}>Send Reset Link</Text>
+                    )}
+                  </Pressable>
                 </View>
+              ) : (
+                <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.heroBorder }]}>
+                  <Text style={[styles.cardTitle, { color: theme.text }]}>Set a new password</Text>
+                  <Text style={[styles.cardSubtitle, { color: theme.muted }]}>Use at least 6 characters.</Text>
 
-                {errorMessage ? (
-                  <Text style={styles.errorText}>{errorMessage}</Text>
-                ) : null}
-                {successMessage ? (
-                  <Text style={styles.successText}>{successMessage}</Text>
-                ) : null}
+                  <View style={styles.inputBlock}>
+                    <Text style={[styles.fieldLabel, { color: theme.text }]}>New Password</Text>
+                    <TextInput
+                      value={newPassword}
+                      onChangeText={(text) => {
+                        setNewPassword(text);
+                        if (errorMessage || successMessage) {
+                          setErrorMessage(null);
+                          setSuccessMessage(null);
+                        }
+                      }}
+                      placeholder="Enter a new password"
+                      placeholderTextColor={theme.muted}
+                      secureTextEntry
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      textContentType="newPassword"
+                      style={[
+                        styles.input,
+                        {
+                          backgroundColor: theme.inputBackground,
+                          borderColor: theme.border,
+                          color: theme.text,
+                        },
+                      ]}
+                    />
+                  </View>
 
-                <Pressable
-                  onPress={handleSavePassword}
-                  disabled={isSaving}
-                  style={({ pressed }) => [
-                    styles.saveButton,
-                    pressed && styles.pressed,
-                    isSaving && styles.saveButtonDisabled,
-                  ]}
-                >
-                  <Text style={styles.saveButtonText}>{isSaving ? 'Saving...' : 'Save Password'}</Text>
-                </Pressable>
-              </View>
+                  <View style={styles.inputBlock}>
+                    <Text style={[styles.fieldLabel, { color: theme.text }]}>Confirm New Password</Text>
+                    <TextInput
+                      value={confirmPassword}
+                      onChangeText={(text) => {
+                        setConfirmPassword(text);
+                        if (errorMessage || successMessage) {
+                          setErrorMessage(null);
+                          setSuccessMessage(null);
+                        }
+                      }}
+                      placeholder="Re-enter the new password"
+                      placeholderTextColor={theme.muted}
+                      secureTextEntry
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      textContentType="password"
+                      style={[
+                        styles.input,
+                        {
+                          backgroundColor: theme.inputBackground,
+                          borderColor: theme.border,
+                          color: theme.text,
+                        },
+                      ]}
+                    />
+                  </View>
+
+                  {errorMessage ? (
+                    <Text style={styles.errorText}>{errorMessage}</Text>
+                  ) : null}
+                  {successMessage ? (
+                    <Text style={styles.successText}>{successMessage}</Text>
+                  ) : null}
+
+                  <Pressable
+                    onPress={handleSavePassword}
+                    disabled={isSaving}
+                    style={({ pressed }) => [
+                      styles.saveButton,
+                      pressed && styles.pressed,
+                      isSaving && styles.saveButtonDisabled,
+                    ]}
+                  >
+                    <Text style={styles.saveButtonText}>{isSaving ? 'Saving...' : 'Save Password'}</Text>
+                  </Pressable>
+                </View>
+              )}
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
@@ -243,6 +371,11 @@ const styles = StyleSheet.create({
   pageTitle: {
     fontSize: 20,
     fontWeight: '700',
+  },
+  loadingBlock: {
+    paddingVertical: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   card: {
     borderRadius: 22,
