@@ -1,8 +1,7 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import * as Font from 'expo-font';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { ActivityIndicator, View, Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
@@ -12,30 +11,26 @@ import { CookbookProvider, useCookbookContext } from '../CookbookContext';
 import { GroceryProvider, useGroceryContext } from '../GroceryContext';
 import { ThemeProvider as AppThemeProvider, useThemeContext } from '../context/ThemeContext';
 
-// Load vector icon fonts for web support
-async function loadIconFonts() {
+// Inject vector icon fonts CSS for web support
+function injectFontCSS() {
   if (Platform.OS !== 'web') return;
 
   try {
-    await Font.loadAsync({
-      // @expo/vector-icons fonts
-      'Ionicons': require('@expo/vector-icons/Ionicons').default || require('@expo/vector-icons/fonts/Ionicons.ttf'),
-      'MaterialIcons': require('@expo/vector-icons/fonts/MaterialIcons.ttf'),
-      'MaterialCommunityIcons': require('@expo/vector-icons/fonts/MaterialCommunityIcons.ttf'),
-      'FontAwesome': require('@expo/vector-icons/fonts/FontAwesome.ttf'),
-      'FontAwesome5_Solid': require('@expo/vector-icons/fonts/FontAwesome5_Solid.ttf'),
-      'FontAwesome5_Regular': require('@expo/vector-icons/fonts/FontAwesome5_Regular.ttf'),
-      'FontAwesome5_Brands': require('@expo/vector-icons/fonts/FontAwesome5_Brands.ttf'),
-      'Foundation': require('@expo/vector-icons/fonts/Foundation.ttf'),
-      'EvilIcons': require('@expo/vector-icons/fonts/EvilIcons.ttf'),
-      'Entypo': require('@expo/vector-icons/fonts/Entypo.ttf'),
-      'AntDesign': require('@expo/vector-icons/fonts/AntDesign.ttf'),
-      'SimpleLineIcons': require('@expo/vector-icons/fonts/SimpleLineIcons.ttf'),
-      'Octicons': require('@expo/vector-icons/fonts/Octicons.ttf'),
-      'Zocial': require('@expo/vector-icons/fonts/Zocial.ttf'),
-    });
+    // Check if fonts CSS is already loaded
+    if (document.getElementById('expo-vector-icons-css')) {
+      return;
+    }
+
+    // Create and inject CSS link
+    const link = document.createElement('link');
+    link.id = 'expo-vector-icons-css';
+    link.rel = 'stylesheet';
+    link.href = './fonts.css';
+    document.head.appendChild(link);
+
+    console.log('✅ Vector icon fonts CSS injected');
   } catch (error) {
-    console.warn('⚠️ Failed to load icon fonts on web:', error);
+    console.warn('⚠️ Failed to inject icon fonts CSS:', error);
   }
 }
 
@@ -54,19 +49,9 @@ const loadingContainerStyle = {
 } as const;
 
 export default function RootLayout() {
-  const [fontsLoaded, setFontsLoaded] = useState(false);
-
   useEffect(() => {
-    loadIconFonts().then(() => setFontsLoaded(true));
+    injectFontCSS();
   }, []);
-
-  if (!fontsLoaded && Platform.OS === 'web') {
-    return (
-      <View style={[{ flex: 1, alignItems: 'center', justifyContent: 'center' }, { backgroundColor: '#121212' }]}>
-        <ActivityIndicator size="large" color="#65B891" />
-      </View>
-    );
-  }
 
   return (
     <AppThemeProvider>
