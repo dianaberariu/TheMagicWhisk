@@ -1,16 +1,44 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 
 import { useAuth } from '../AuthContext';
+import { supabase } from '../supabase';
+
+const isExistingAccountResult = (
+  error?: { message?: string } | null,
+  data?: { user?: { identities?: unknown[] | null } | null } | null
+) => {
+  if (error?.message && /already (registered|exists|been registered)|user already registered/i.test(error.message)) {
+    return true;
+  }
+
+  // Supabase returns a user with an empty `identities` array (and no error) when the
+  // email is already registered, to avoid leaking which emails exist in the system.
+  if (!error && data?.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+    return true;
+  }
+
+  return false;
+};
 
 export default function LoginScreen() {
   const { signIn, signUp } = useAuth() as {
-    signIn: (email: string, password: string) => Promise<{ error?: { message?: string } | null }>;
+    signIn: (
+      email: string,
+      password: string
+    ) => Promise<{
+      error?: { message?: string } | null;
+      data?: { user?: { identities?: unknown[] | null } | null } | null;
+    }>;
     signUp: (
       email: string,
       password: string,
       options?: { data?: { full_name?: string } }
-    ) => Promise<{ error?: { message?: string } | null }>;
+    ) => Promise<{
+      error?: { message?: string } | null;
+      data?: { user?: { identities?: unknown[] | null } | null } | null;
+    }>;
   };
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -19,6 +47,16 @@ export default function LoginScreen() {
   const [errorMessage, setErrorMessage] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
   const [focusedField, setFocusedField] = useState<'name' | 'email' | 'password' | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      setName('');
+      setEmail('');
+      setPassword('');
+      setErrorMessage('');
+      setFocusedField(null);
+    }, [])
+  );
 
   const handleAuth = async (action: 'signIn' | 'signUp') => {
     setLoading(true);
@@ -31,6 +69,14 @@ export default function LoginScreen() {
           })
         : await signIn(email.trim(), password);
 
+      if (action === 'signUp' && isExistingAccountResult(result?.error, result?.data)) {
+        Alert.alert(
+          'Account already exists',
+          'An account with this email already exists. Please log in instead, or use "Forgot Password?" if you need to reset it.'
+        );
+        return;
+      }
+
       if (result?.error) {
         setErrorMessage(result.error.message ?? 'Authentication failed');
         return;
@@ -38,15 +84,52 @@ export default function LoginScreen() {
 
       if (action === 'signUp') {
         setName('');
+        setEmail('');
         setPassword('');
         Alert.alert(
-          'Check your email',
-          'We have sent a confirmation link to your email address. Please confirm your account before logging in.'
+          'Account created',
+          'Please check your email for the verification link before logging in.',
+          [{ text: 'OK', onPress: () => setIsRegistering(false) }]
         );
       }
     } catch (error) {
       console.log('[LOGIN FLOW] Error caught:', error);
       setErrorMessage(error instanceof Error ? error.message : 'Authentication failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    const trimmedEmail = email.trim();
+
+    if (!trimmedEmail) {
+      setErrorMessage('Enter your email address first, then tap "Forgot Password?".');
+      return;
+    }
+
+    setLoading(true);
+    setErrorMessage('');
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail, {
+        redirectTo: 'themagicwhisk://change-password',
+      });
+
+      if (error) {
+        Alert.alert('Something went wrong', error.message ?? 'Could not send the reset email. Please try again.');
+        return;
+      }
+
+      Alert.alert(
+        'Check your email',
+        `If an account exists for ${trimmedEmail}, we've sent a link to reset your password.`
+      );
+    } catch (error) {
+      Alert.alert(
+        'Something went wrong',
+        error instanceof Error ? error.message : 'Could not send the reset email. Please try again.'
+      );
     } finally {
       setLoading(false);
     }
@@ -112,6 +195,16 @@ export default function LoginScreen() {
             onBlur={() => setFocusedField((current) => (current === 'password' ? null : current))}
             style={[styles.input, focusedField === 'password' && styles.inputFocused]}
           />
+
+          {!isRegistering ? (
+            <Pressable
+              onPress={handleForgotPassword}
+              disabled={loading}
+              style={({ pressed }) => [styles.forgotPasswordLink, pressed && styles.togglePressed]}
+            >
+              <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+            </Pressable>
+          ) : null}
 
           {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
 
@@ -233,6 +326,18 @@ const styles = StyleSheet.create({
   },
   inputFocused: {
     borderBottomColor: '#D4A74A',
+  },
+  forgotPasswordLink: {
+    alignSelf: 'flex-end',
+    marginTop: -4,
+    marginBottom: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 2,
+  },
+  forgotPasswordText: {
+    color: '#5F7D6F',
+    fontSize: 13,
+    fontWeight: '600',
   },
   primaryButton: {
     minHeight: 54,
